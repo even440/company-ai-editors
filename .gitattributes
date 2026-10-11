@@ -1,0 +1,12 @@
+* text=auto
+*.pdf binary
+*.png binary
+*.jpg binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.xmind binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.ico binary
