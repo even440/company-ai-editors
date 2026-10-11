@@ -1,0 +1,19 @@
+/* 思维笔记：base.css 里已有 .mn-* 的基本样式，这里补编辑器用到的部分 */
+.mn-canvas { position: absolute; inset: 0; outline: 0; }
+.mn-hint { white-space: nowrap; }
+.mn-busy { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; z-index: 3; box-shadow: var(--shadow); background: var(--surface); }
+.mn-outline { max-width: 900px; }
+.mn-root.on .mn-t { background: var(--accent-soft); }
+.mn-row { cursor: text; }
+.mn-row .mn-t { min-width: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.mn-t:focus { background: var(--accent-soft); }
+.mn-t:empty::before { content: '新节点'; color: var(--ink-3); pointer-events: none; }
+.mn-root .mn-t:empty::before { content: '中心主题'; }
+.mn-t[contenteditable="false"] { cursor: default; }
+.mn-fold.leaf { cursor: default; }
+.dtool .seg.two button .ic { width: 14px; height: 14px; }
+@media (max-width: 700px) {
+  .mn-hint { display: none; }
+  .mn-body { padding: 14px 10px 40px; }
+  .mn-ol { padding-left: 14px; }
+}

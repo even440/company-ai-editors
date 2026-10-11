@@ -1,0 +1,21 @@
+/* 表格编辑器：Univer 铺满内容区；外围（只读提示、导入遮罩）用平台变量配色，深色主题跟着变 */
+.sh-ed { background: var(--bg); }
+.sh-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sh-univer { flex: 1; min-height: 0; height: 100%; width: 100%; position: relative; overflow: hidden; background: var(--surface); }
+/* Univer 把它的工作台挂进容器，让它和容器一样高 */
+.sh-univer > * { height: 100%; }
+
+.sh-ro { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-bottom: 1px solid var(--warn-line); background: var(--warn-soft); color: var(--warn-ink); font-size: 13px; }
+.sh-ro .ic { width: 14px; height: 14px; flex: none; }
+.sh-ro b { font-weight: 650; }
+
+.sh-busy { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--bg); color: var(--ink-3); font-size: 13px; }
+
+/* 深色主题下 Univer 自己切到深色模式；容器底色跟平台一致，避免切换时闪白 */
+html[data-theme="dark"] .sh-univer { background: var(--surface); color-scheme: dark; }
+
+/* 手机宽度：只读提示收紧，其余交给 Univer 自己折叠工具栏 */
+@media (max-width: 600px) {
+  .sh-ro { padding: 5px 12px; font-size: 12.5px; }
+  .sh-ro span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}

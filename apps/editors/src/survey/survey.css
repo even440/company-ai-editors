@@ -1,0 +1,22 @@
+/* 问卷：base.css 里已有 .sv-* 的基本样式，这里补编辑器用到的部分 */
+.sv > .tabs { flex: none; }
+.sv-qh b:empty::before { content: '问题标题'; color: var(--ink-3); }
+.sv-opt span:empty::before { content: '选项'; color: var(--ink-3); }
+.sv-qh b[contenteditable="false"], .sv-opt span[contenteditable="false"], .sv-desc-t[contenteditable="false"] { cursor: default; }
+.sv-qh b:focus { background: var(--surface-2); }
+.sv-opt-add { align-self: flex-start; }
+.sv-fq > b { font-weight: 600; }
+.sv-fq .select { align-self: flex-start; min-width: 200px; }
+.sv-fq input[type="date"].input { width: auto; }
+.sv-done { align-items: center; text-align: center; padding: 48px 24px; gap: 10px; }
+.sv-done .ic { width: 40px; height: 40px; color: var(--good-ink); }
+.sv-rules { border: 0; margin: 0; min-width: 0; }
+.sv-rules:disabled { opacity: .6; }
+.sv-stats .tile-v .chip { font-size: 13px; height: 26px; }
+.sv-stats .card-h h2 { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .sv-fill { padding: 16px; }
+  .sv-fill h2 { font-size: 18px; }
+  .sv-qh { flex-wrap: wrap; }
+  .sv-qh b { flex-basis: calc(100% - 32px); }
+}

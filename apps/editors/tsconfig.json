@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@cai/bridge": ["../../packages/bridge/src/index.ts"],
+      "@shell/*": ["src/shell/*"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src", "*/main.tsx", "vite.config.ts", "../../packages/bridge/src"]
+}

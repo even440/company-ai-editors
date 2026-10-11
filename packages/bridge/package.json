@@ -1,0 +1,11 @@
+{
+  "name": "@cai/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "编辑器和宿主之间的约定：地址参数、接口、postMessage 消息、自动保存",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" }
+}

@@ -1,0 +1,75 @@
+/* 多维表格编辑器在 base.css 的 .bs-* 之上补的样式：可编辑格子、虚拟滚动、菜单、拖拽、手机宽度 */
+.bs.ed { min-height: 0; }
+.bs > .bs-views { flex: none; }
+.bs > .bs-filter { flex: none; }
+.bs-wrap { height: 100%; overflow: auto; }
+.bs-grid { table-layout: fixed; }
+.bs-grid th { cursor: pointer; user-select: none; }
+.bs-grid th:hover { background: var(--accent-soft); }
+.bs-grid th.bs-n, .bs-grid th.bs-addf { cursor: default; }
+.bs-grid th.bs-n:hover, .bs-grid th.bs-addf:hover { background: var(--surface-2); }
+.bs-th { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bs-th b { font-weight: inherit; overflow: hidden; text-overflow: ellipsis; }
+.bs-th .bs-sort { margin-left: auto; color: var(--accent); flex: none; }
+.bs-grid tbody tr.bs-row { height: 36px; }
+.bs-grid td { padding: 0 12px; height: 36px; position: relative; }
+.bs-grid td.bs-n, .bs-grid th.bs-n { padding-left: 4px; padding-right: 4px; width: auto; }
+.bs-grid td.bs-n.click { cursor: pointer; }
+.bs-grid td.bs-n.click:hover { background: var(--accent-soft); color: var(--accent); }
+.bs-grid.editable td.bs-cell { cursor: cell; }
+.bs-grid.editable td.bs-cell:hover { box-shadow: inset 0 0 0 1px var(--line-2); }
+.bs-grid td.editing { padding: 0; overflow: visible; }
+.bs-cellin { position: absolute; inset: 0; width: 100%; height: 100%; border: 2px solid var(--accent-btn); border-radius: 0; padding: 0 10px; background: var(--surface); color: var(--ink); font: inherit; outline: 0; z-index: 2; }
+.bs-grid td.num .bs-cellin { text-align: right; }
+.bs-grid .bs-addrow td { border-left: 0; border-right: 0; }
+.bs-grid .bs-empty, .bs-gal .bs-empty { text-align: center; color: var(--ink-3); padding: 32px; }
+.bs-user { gap: 6px; }
+.bs-multi { display: inline-flex; gap: 4px; }
+.bs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.bs-chips .chip { border: 0; cursor: pointer; height: 26px; }
+.bs-chips .chip.dim { background: var(--chip-bg); color: var(--ink-3); }
+.bs-chips .chip:hover { filter: brightness(.96); }
+.bs-chips .chip[disabled] { cursor: default; }
+.bs-pop { max-height: min(380px, 70vh); overflow: auto; }
+.bs-pop .dmenu-i { white-space: normal; }
+.bs-pop .dmenu-i .chip, .bs-pop .dmenu-i .av { flex: none; } /* base.css 给 .dmenu-i 里所有 span 设了 flex: 1，标签和头像不要被拉宽 */
+.bs-pop .dmenu-i .row i { font-style: normal; font-size: 12px; color: var(--ink-3); margin-left: 2px; }
+.bs-pop-q { height: 30px; margin: 2px 2px 6px; align-self: stretch; }
+.bs-pop-list { display: flex; flex-direction: column; gap: 1px; }
+.bs-note { margin: 16px; }
+.bs-count { white-space: nowrap; }
+.bs-sortdir { width: 28px; height: 24px; padding: 0; justify-content: center; border: 0; background: none; }
+.bs-views .bs-view .bs-more { width: 16px; height: 16px; display: inline-grid; place-items: center; border-radius: 4px; margin-left: -2px; color: var(--ink-3); }
+.bs-views .bs-view .bs-more:hover { background: var(--accent-soft); }
+.bs-kb .bs-col.over { outline: 2px dashed var(--accent-btn); outline-offset: -2px; background: var(--accent-soft); }
+.bs-card[draggable="true"] { cursor: grab; }
+.bs-card[draggable="true"]:active { cursor: grabbing; }
+.bs-calh { flex-wrap: wrap; align-items: center; }
+.bs-calh .btn.icon-only { width: 28px; height: 28px; }
+.bs-calh .select { height: 28px; }
+.bs-day { cursor: default; }
+.bs-fl-row { gap: 10px; }
+.bs-fl-name { flex: 1; min-width: 0; }
+.bs-fl-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bs-vtypes { display: flex; flex-wrap: wrap; gap: 6px; }
+.bs-rec .field > .select { align-self: stretch; }
+.bs-form .field > .select { align-self: stretch; }
+.bs-form .field-l .ic { vertical-align: -3px; color: var(--ink-3); }
+.bs-rec .field-l .ic { vertical-align: -3px; color: var(--ink-3); }
+.bs-filter .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) {
+  .bs .dtool { padding: 6px 10px; gap: 4px; }
+  .bs .dtool .tt .lbl { display: none; }
+  .bs .dtool .tt { padding: 0 8px; }
+  .bs .dtool .bs-count { display: none; }
+  .bs-views { padding: 4px 8px 0; }
+  .bs-filter { padding: 6px 10px; gap: 6px; }
+  .bs-filter .input { width: 100px; }
+  .bs-gal { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding: 12px; gap: 10px; }
+  .bs-kb { padding: 12px; gap: 10px; }
+  .bs-col { width: 220px; }
+  .bs-cal { padding: 10px; }
+  .bs-day { min-height: 56px; padding: 2px; }
+  .bs-ev { padding: 1px 4px; font-size: 11px; }
+  .bs-form { margin: 12px; padding: 16px; }
+}

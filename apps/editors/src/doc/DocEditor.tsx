@@ -1,0 +1,298 @@
+/**
+ * 文档编辑器：Tiptap 正文 + Yjs 协同。从平台 src/features/docs/DocEditor.tsx 搬来，只保留正文编辑：标题、分享、AI 面板由宿主负责。
+ * 两种模式：
+ * - 协同（默认）：连宿主的 ws(s)://…/ws/collab/<编号>，正文在 Y.XmlFragment 'default'、标题在 Y.Text 'title'，服务端自己落库，
+ *   编辑器只把连接状态（collab）、在线的人（present）和标题变化（title）告诉宿主；
+ * - 普通（地址参数 collab=0）：直接加载 s.doc.content，改动后 markDirty 走会话的自动保存。
+ * 协同模式 6 秒没同步上、或服务端拒绝时，退成只读视图并提示，可以重试。
+ */
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import type { JSONContent } from '@tiptap/core';
+import { Collaboration } from '@tiptap/extension-collaboration';
+import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
+import { Placeholder, UndoRedo } from '@tiptap/extensions';
+import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
+import { WebsocketProvider } from 'y-websocket';
+import * as Y from 'yjs';
+import type { EditorToHost, PresenceUser, Session, Snapshot } from '@cai/bridge';
+import { useHost, useTheme } from '../shell/session';
+import { Field, Icon, Modal, Select, Toaster, Toolbar, cx, toast } from '../shell/ui';
+import { contentOf, paragraphsOf, plainOf, type DocNode } from './content';
+import { toDocx, toMarkdown } from './export';
+import { importToHtml, titleOf } from './import';
+import { Y_FIELD, Y_TITLE, schemaExtensions } from './schema';
+import './doc.css';
+
+type CollabState = Extract<EditorToHost, { type: 'collab' }>['state'];
+/** 这么久还没同步上，就退成只读视图 */
+const CONNECT_TIMEOUT = 6000;
+/** 断开这么久以后算离线 */
+const OFFLINE_AFTER = 12000;
+/** 选区变化多久报一次给宿主 */
+const SELECTION_EVERY = 300;
+const placeholder = () => Placeholder.configure({ placeholder: '从这里开始写……' });
+const param = (k: string) => new URLSearchParams(location.search).get(k) ?? '';
+
+/** 一条协同连接：Y.Doc、WebSocket 和我在 awareness 里的身份 */
+interface YSession { doc: Y.Doc; provider: WebsocketProvider; user: { id: string; name: string; color: string } }
+
+const snapshot = (editor: Editor): Snapshot => { const json = editor.getJSON() as DocNode; return { content: json, plain: plainOf(json) }; };
+/** 把 Y.Text 改成目标文字：只改有变化的那一段，两个人同时改也不会乱 */
+function setYText(y: Y.Text, v: string) {
+  const cur = y.toString();
+  if (cur === v) return;
+  let a = 0; while (a < cur.length && a < v.length && cur[a] === v[a]) a++;
+  let b = 0; while (b < cur.length - a && b < v.length - a && cur[cur.length - 1 - b] === v[v.length - 1 - b]) b++;
+  y.doc!.transact(() => { if (cur.length - a - b > 0) y.delete(a, cur.length - a - b); if (v.length - a - b > 0) y.insert(a, v.slice(a, v.length - b)); });
+}
+
+/* ---------- 正文 ---------- */
+
+/** 正文编辑器。协同模式绑在 Y.Doc 上（连接变了重新建）；普通模式直接加载内容 */
+function Body({ s, ysess, editable, onEditor, onUpdate, onSelection }: { s: Session; ysess: YSession | null; editable: boolean; onEditor: (e: Editor | null) => void; onUpdate: (e: Editor) => void; onSelection: (e: Editor) => void }) {
+  const upd = useRef(onUpdate), sel = useRef(onSelection);
+  upd.current = onUpdate; sel.current = onSelection;
+  const editor = useEditor({
+    extensions: [
+      ...schemaExtensions(), placeholder(),
+      ...(ysess ? [Collaboration.configure({ document: ysess.doc, field: Y_FIELD }), CollaborationCaret.configure({ provider: ysess.provider, user: ysess.user })] : [UndoRedo]),
+    ],
+    content: ysess ? undefined : (contentOf(s.doc.content) as JSONContent),
+    editable, shouldRerenderOnTransaction: false,
+    editorProps: { attributes: { class: 'doc-body', 'data-id': s.docId } },
+    onUpdate: ({ editor: e }) => upd.current(e),
+    onSelectionUpdate: ({ editor: e }) => sel.current(e),
+  }, [ysess]);
+  useEffect(() => { onEditor(editor); return () => onEditor(null); }, [editor, onEditor]);
+  useEffect(() => { editor?.setEditable(editable, false); }, [editor, editable]);
+  return <EditorContent editor={editor} />;
+}
+
+/* ---------- 工具栏 ---------- */
+
+function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => void; onLink: () => void }) {
+  const st = useEditorState({
+    editor,
+    selector: ({ editor: e }) => ({
+      block: e.isActive('heading', { level: 1 }) ? 'h1' : e.isActive('heading', { level: 2 }) ? 'h2' : e.isActive('heading', { level: 3 }) ? 'h3' : 'p',
+      bold: e.isActive('bold'), italic: e.isActive('italic'), ul: e.isActive('bulletList'), ol: e.isActive('orderedList'), table: e.isActive('table'), link: e.isActive('link'),
+      undo: e.can().undo(), redo: e.can().redo(),
+    }),
+  });
+  const c = () => editor.chain().focus();
+  return (
+    <Toolbar right={<>
+      <button type="button" className="tt" onClick={() => c().undo().run()} disabled={!st.undo} title="撤销（Ctrl+Z）"><Icon name="undo" /><span className="lbl">撤销</span></button>
+      <button type="button" className="tt" onClick={() => c().redo().run()} disabled={!st.redo} title="重做（Ctrl+Shift+Z）"><Icon name="redo" /><span className="lbl">重做</span></button>
+    </>}>
+      <Select aria-label="段落样式" value={st.block} onChange={(v) => (v === 'p' ? c().setParagraph().run() : c().toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 }).run())} options={[['p', '正文'], ['h1', '标题 1'], ['h2', '标题 2'], ['h3', '标题 3']]} />
+      <span className="sep" />
+      <button type="button" className={cx('tt b', st.bold && 'on')} onClick={() => c().toggleBold().run()} aria-pressed={st.bold} title="加粗（Ctrl+B）">B</button>
+      <button type="button" className={cx('tt i', st.italic && 'on')} onClick={() => c().toggleItalic().run()} aria-pressed={st.italic} title="斜体（Ctrl+I）">I</button>
+      <span className="sep" />
+      <button type="button" className={cx('tt', st.ul && 'on')} onClick={() => c().toggleBulletList().run()} aria-pressed={st.ul}><Icon name="list" /><span className="lbl">列表</span></button>
+      <button type="button" className={cx('tt', st.ol && 'on')} onClick={() => c().toggleOrderedList().run()} aria-pressed={st.ol}><Icon name="ol" /><span className="lbl">编号</span></button>
+      <span className="sep" />
+      {st.table ? <>
+        <button type="button" className="tt" onClick={() => c().addRowAfter().run()} title="在下面加一行">加行</button>
+        <button type="button" className="tt" onClick={() => c().addColumnAfter().run()} title="在右边加一列">加列</button>
+        <button type="button" className="tt" onClick={() => c().deleteRow().run()} title="删除这一行">删行</button>
+        <button type="button" className="tt" onClick={() => c().deleteColumn().run()} title="删除这一列">删列</button>
+        <button type="button" className="tt" onClick={() => c().deleteTable().run()}>删除表格</button>
+      </> : <button type="button" className="tt" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><Icon name="grid" /><span className="lbl">表格</span></button>}
+      <button type="button" className="tt" onClick={onImage}><Icon name="image" /><span className="lbl">图片</span></button>
+      <button type="button" className={cx('tt', st.link && 'on')} onClick={onLink} aria-pressed={st.link}><Icon name="link" /><span className="lbl">链接</span></button>
+    </Toolbar>
+  );
+}
+
+/** 链接弹窗：有选中文字就给它加链接，没有就把地址本身插进去 */
+function LinkDialog({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+  const [href, setHref] = useState<string>(String(editor.getAttributes('link').href ?? ''));
+  const had = editor.isActive('link');
+  const apply = () => {
+    const v = href.trim();
+    if (!v) { editor.chain().focus().extendMarkRange('link').unsetLink().run(); onClose(); return; }
+    const url = /^(https?:\/\/|mailto:|\/)/i.test(v) ? v : 'https://' + v;
+    const { from, to } = editor.state.selection;
+    if (from === to && !had) editor.chain().focus().insertContent({ type: 'text', text: url, marks: [{ type: 'link', attrs: { href: url } }] }).run();
+    else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    onClose();
+  };
+  return (
+    <Modal title={had ? '修改链接' : '插入链接'} onClose={onClose} footer={<>{had ? <button type="button" className="btn" onClick={() => { editor.chain().focus().extendMarkRange('link').unsetLink().run(); onClose(); }}>去掉链接</button> : null}<span className="spacer" /><button type="button" className="btn" onClick={onClose}>取消</button><button type="button" className="btn primary" onClick={apply}>确定</button></>}>
+      <Field label="地址" htmlFor="link-href" hint="网页、邮件（mailto:）或站内地址">
+        <input id="link-href" className="input" value={href} onChange={(e) => setHref(e.target.value)} placeholder="https://" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') apply(); }} />
+      </Field>
+    </Modal>
+  );
+}
+
+const CONN_TEXT: Record<CollabState, string> = { connecting: '正在连接……', connected: '已连接', reconnecting: '正在重连……', offline: '离线，修改会在重连后同步', denied: '无法协同', failed: '没有连上协同服务' };
+
+/* ---------- 编辑器 ---------- */
+
+export function DocEditor({ session: s }: { session: Session }) {
+  const theme = useTheme();
+  const collab = param('collab') !== '0';
+  const [ro, setRo] = useState(s.readonly);
+  const roRef = useRef(ro); roRef.current = ro;
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [link, setLink] = useState(false), [busy, setBusy] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  // 协同连接：一篇文档一个 Y.Doc 和一条 WebSocket；点了「重试」就重连
+  const [ysess, setYsess] = useState<YSession | null>(null), [attempt, setAttempt] = useState(0);
+  const [conn, setConn] = useState<CollabState>('connecting'), [connMsg, setConnMsg] = useState(''), [synced, setSynced] = useState(false);
+  useEffect(() => {
+    if (!collab) return;
+    const doc = new Y.Doc();
+    // s.wsUrl() 是 ws(s)://宿主/ws/collab/<编号>?token=…；y-websocket 自己拼房间名和参数，这里只要前面那段
+    const base = s.wsUrl().replace(/\/ws\/collab\/.*$/, '/ws/collab');
+    const provider = new WebsocketProvider(base, s.docId, doc, { params: { token: s.token }, disableBc: true, maxBackoffTime: 5000 });
+    const sess: YSession = { doc, provider, user: { id: s.doc.user.id, name: s.doc.user.name, color: s.doc.user.color } };
+    let everSynced = false, offlineTimer: number | undefined;
+    const failTimer = window.setTimeout(() => { if (!everSynced) setConn((c) => (c === 'denied' ? c : 'failed')); }, CONNECT_TIMEOUT);
+    // 标题在 Y.Text 'title' 里：别人改了就告诉宿主
+    const ytitle = doc.getText(Y_TITLE);
+    const onTitle = () => { const t = ytitle.toString().trim(); if (t && t !== s.doc.title) { s.doc.title = t; document.title = t; s.send({ type: 'title', title: t }); } };
+    ytitle.observe(onTitle);
+    provider.on('sync', (ok: boolean) => {
+      if (!ok) return;
+      everSynced = true; window.clearTimeout(failTimer); window.clearTimeout(offlineTimer);
+      setSynced(true); setConn('connected'); setConnMsg('');
+    });
+    provider.on('status', ({ status }: { status: 'connected' | 'disconnected' | 'connecting' }) => {
+      if (status !== 'disconnected' || !everSynced) return;
+      setConn((c) => (c === 'denied' ? c : 'reconnecting'));
+      window.clearTimeout(offlineTimer);
+      offlineTimer = window.setTimeout(() => setConn((c) => (c === 'reconnecting' ? 'offline' : c)), OFFLINE_AFTER);
+    });
+    // 服务端说重连也没用：没有权限、文档不存在
+    provider.on('closed', (ev: { code: number; reason: string }) => { window.clearTimeout(failTimer); setConn('denied'); setConnMsg(ev.reason || '没有权限'); s.send({ type: 'present', users: [] }); });
+    // 在线的人：awareness 里除了我以外的每个人报一次（服务端会把 user 换成登录身份，页面冒充不了）
+    const onAwareness = () => {
+      const seen = new Map<string, PresenceUser>();
+      for (const [cid, st] of provider.awareness.getStates()) {
+        const u = (st as { user?: { id?: string; name?: string } }).user;
+        if (cid !== doc.clientID && u?.id && u.id !== s.doc.user.id && !seen.has(u.id)) seen.set(u.id, { id: u.id, name: u.name ?? '', editing: true });
+      }
+      s.send({ type: 'present', users: [...seen.values()] });
+    };
+    provider.awareness.on('change', onAwareness);
+    setYsess(sess);
+    return () => {
+      window.clearTimeout(failTimer); window.clearTimeout(offlineTimer);
+      ytitle.unobserve(onTitle); provider.awareness.off('change', onAwareness);
+      provider.destroy(); doc.destroy();
+      setYsess(null); setSynced(false); setConn('connecting');
+    };
+  }, [collab, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (collab) s.send({ type: 'collab', state: conn }); }, [collab, conn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const live = collab && synced && conn !== 'denied' && !!ysess;
+  /** 正文能不能改：只读、还没连上协同、协同失败都不能 */
+  const editable = !ro && (!collab || live);
+
+  // 普通模式：改动后交给会话自动保存；协同模式服务端自己落库
+  const onUpdate = useCallback((e: Editor) => { if (!collab && !roRef.current) s.markDirty(() => snapshot(e)); }, [collab, s]);
+  // 选区变化：节流后把选中的文字告诉宿主（AI 面板用）
+  const selTimer = useRef(0), lastSel = useRef('');
+  const onSelection = useCallback((e: Editor) => {
+    if (selTimer.current) return;
+    selTimer.current = window.setTimeout(() => {
+      selTimer.current = 0;
+      if (e.isDestroyed) return;
+      const { from, to } = e.state.selection, text = from === to ? '' : e.state.doc.textBetween(from, to, '\n');
+      if (text !== lastSel.current) { lastSel.current = text; s.send({ type: 'selection', text }); }
+    }, SELECTION_EVERY);
+  }, [s]);
+  const onEditor = useCallback((e: Editor | null) => { setEditor(e); if (import.meta.env.DEV) (window as unknown as { __editor?: Editor | null }).__editor = e; }, []);
+
+  /** 宿主改了标题：协同模式写进 Y.Text，普通模式只记下来 */
+  const applyTitle = useCallback((t: string) => {
+    s.doc.title = t; document.title = t;
+    if (ysess) setYText(ysess.doc.getText(Y_TITLE), t);
+  }, [s, ysess]);
+
+  // 导入：刚从文件创建、还没转换的内容。协同模式等连上以后再写，内容才会进 Y.Doc
+  const imported = useRef(false);
+  useEffect(() => {
+    const f = s.doc.importFile;
+    if (!f || !editor || !editable || imported.current) return;
+    imported.current = true;
+    (async () => {
+      setBusy(`正在导入 ${f.name}……`);
+      try {
+        const res = await fetch(f.url || s.client.assetUrl(f.id));
+        if (!res.ok) throw new Error(`下载源文件失败（${res.status}）`);
+        const html = await importToHtml(f, await res.arrayBuffer(), s.client);
+        editor.commands.setContent(html, { emitUpdate: true });
+        const title = titleOf(s.doc.title, f.name);
+        if (collab) applyTitle(title);
+        else { s.markDirty(() => ({ ...snapshot(editor), title })); await s.flush(); }
+        await s.client.imported();
+        s.send({ type: 'imported', title });
+        toast(`已导入 ${f.name}`);
+      } catch (e) { imported.current = false; toast(`导入失败：${e instanceof Error ? e.message : '未知错误'}`); }
+      finally { setBusy(null); }
+    })();
+  }, [editor, editable, collab, s, applyTitle]);
+
+  // 宿主的消息
+  useHost((m) => {
+    if (m.type === 'readonly') setRo(m.value);
+    else if (m.type === 'title') applyTitle(m.title);
+    else if (m.type === 'focus') editor?.commands.focus();
+    else if (!editor) return;
+    else if (m.type === 'insert') {
+      if (!editor.isEditable) { toast('现在是只读状态，插不进去'); return; }
+      if (m.html) editor.chain().focus('end').insertContent(m.html).run();
+      else if (m.text) { const paras = paragraphsOf(m.text); if (paras.length) editor.chain().focus('end').insertContent(paras).run(); }
+    } else if (m.type === 'export') void exportAs(editor, m.format);
+  });
+  const exportAs = async (e: Editor, format: string) => {
+    const json = e.getJSON() as DocNode, title = s.doc.title || '文档';
+    try {
+      if (format === 'docx') s.download(await toDocx(json, title), `${title}.docx`);
+      else if (format === 'md') s.download(new Blob([toMarkdown(json, title)], { type: 'text/markdown;charset=utf-8' }), `${title}.md`);
+      else if (format === 'pdf') { window.print(); s.send({ type: 'exported', name: `${title}.pdf` }); }
+      else toast(`不支持导出为 ${format}`);
+    } catch (err) { toast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`); }
+  };
+
+  const pickImage = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0]; ev.target.value = '';
+    if (!file || !editor) return;
+    if (!file.type.startsWith('image/')) { toast('只能插入图片文件'); return; }
+    setBusy('正在上传图片……');
+    try { const r = await s.client.upload(file); editor.chain().focus().setImage({ src: r.url, alt: file.name }).run(); }
+    catch (e) { toast(`上传失败：${e instanceof Error ? e.message : '未知错误'}`); }
+    finally { setBusy(null); }
+  };
+
+  const note = !collab ? null
+    : conn === 'denied' ? <div className="note warn ed-note"><Icon name="warn" /> 没法参与协同编辑：{connMsg}。下面是打开时的内容，只能查看。</div>
+    : conn === 'failed' && !synced ? <div className="note warn row ed-note"><span><Icon name="warn" /> 没有连上协同服务，暂时只能查看打开时的内容；连上以后会自动切回{ro ? '实时更新' : '编辑'}。</span><button type="button" className="btn sm" onClick={() => setAttempt((a) => a + 1)}>重试</button></div>
+    : conn === 'offline' ? <div className="note warn ed-note"><Icon name="warn" /> {ro ? '现在是离线状态，看到的可能不是最新内容。' : '现在是离线状态，你可以继续写，连上以后会自动同步；别人这期间的修改也会合并进来。'}</div>
+    : null;
+  const showBody = !collab || live || conn === 'denied' || conn === 'failed';
+
+  return (
+    <div className="ed" style={{ colorScheme: theme }} data-collab={collab ? conn : 'off'}>
+      {editable && editor ? <Tools editor={editor} onImage={() => fileInput.current?.click()} onLink={() => setLink(true)} /> : null}
+      <div className="ed-body">
+        <article className="doc">
+          {note}
+          {busy ? <div className="note ed-note"><span className="spin" /> {busy}</div> : null}
+          {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} />
+            : <div className="ed-state"><span className="spin" role="status" aria-label={CONN_TEXT[conn]} /></div>}
+          {ro && showBody ? <p className="note ed-note">你对这篇文档只有阅读权限。</p> : null}
+        </article>
+      </div>
+      <input ref={fileInput} type="file" accept="image/*" className="sr" aria-label="选择图片" onChange={(e) => void pickImage(e)} />
+      {link && editor ? <LinkDialog editor={editor} onClose={() => setLink(false)} /> : null}
+      <Toaster />
+    </div>
+  );
+}

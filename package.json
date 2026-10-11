@@ -1,0 +1,27 @@
+{
+  "name": "company-ai-editors",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "Company AI 协作平台的在线编辑器：文档、表格、幻灯片、多维表格、问卷、思维笔记、画板、流程图和文件预览。独立部署，用 iframe 嵌进任何宿主。",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/editors",
+    "dev:slides": "npm run dev -w apps/slides",
+    "build": "npm run build:editors && npm run build:slides",
+    "build:editors": "npm run build -w apps/editors",
+    "build:slides": "npm run build-only -w apps/slides",
+    "typecheck": "npm run typecheck -w apps/editors",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "overrides": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

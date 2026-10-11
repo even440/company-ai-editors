@@ -1,0 +1,42 @@
+/* 文件预览：base.css 已有原型的 .fv-* 样式（.fv-main、.fv-img、.fv-pages、.fv-sheet），这里是编辑器外壳里需要补的部分 */
+.ed.fv > .dtool { flex-wrap: nowrap; gap: 10px; }
+.fv-title { flex: 1 1 auto; }
+.fv-title b { font-size: 14px; }
+.ed-body > .fv-main { min-height: 100%; gap: 12px; }
+.ed-body.fill > .fv-main { height: 100%; padding: 0; display: flex; flex-direction: column; align-items: stretch; }
+@media (max-width: 600px) { .ed-body > .fv-main { padding: 12px; } .ed.fv > .dtool .btn .lbl { display: none; } }
+
+/* PDF：工具条固定在上面，页面区自己滚动 */
+.fv-pdf { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.fv-pdfbar { display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; flex-wrap: wrap; }
+.fv-pdfbar .sep { width: 1px; height: 18px; background: var(--line-2); margin-inline: 4px; }
+.fv-zoom { min-width: 3.5em; text-align: center; font-variant-numeric: tabular-nums; font-size: 13px; }
+.fv-pageno { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; white-space: nowrap; }
+.fv-pageno .input { width: 3.5em; height: 28px; padding: 0 6px; text-align: center; }
+.fv-rendering { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; margin-left: auto; }
+.fv-pdf .fv-pages { flex: 1; min-height: 0; overflow: auto; padding: 16px; background: var(--bg); }
+.fv-canvas { background: #fff; box-shadow: var(--shadow-sm); border: 1px solid var(--line); max-width: none; }
+
+/* 图片：默认缩到预览区内，点一下按原始大小看 */
+.fv-imgwrap { width: 100%; display: flex; justify-content: center; }
+.fv-image { max-width: 100%; max-height: calc(100vh - 120px); object-fit: contain; border-radius: 8px; box-shadow: var(--shadow-sm); cursor: zoom-in; background: var(--surface); }
+.fv-imgwrap.big { overflow: auto; justify-content: flex-start; }
+.fv-imgwrap.big .fv-image { max-width: none; max-height: none; cursor: zoom-out; }
+
+/* 视频、音频 */
+.fv-media { width: 100%; max-width: 960px; border-radius: 8px; background: #000; }
+audio.fv-media { background: none; max-width: 560px; }
+.fv-audio { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
+.fv-img .btn { margin-top: 8px; }
+
+/* 文本、Markdown、Word */
+.fv-text { width: 100%; max-width: 900px; margin: 0; padding: 16px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font: 13px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+.fv-doc { min-height: 0; border: 1px solid var(--line); border-radius: 10px; }
+.fv-doc .doc-body { min-height: 0; }
+
+/* 表格：铺满宽度，自己横向滚动 */
+.fv-main .fv-sheet { max-width: 1100px; }
+.fv-gridwrap { overflow: auto; max-height: calc(100vh - 140px); border: 1px solid var(--line); border-radius: 8px; }
+.fv-gridwrap .sh-grid th { min-width: 96px; }
+.fv-gridwrap .sh-grid td { max-width: 320px; }
+.fv-tabs { margin-bottom: 4px; }

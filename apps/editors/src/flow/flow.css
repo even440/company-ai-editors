@@ -1,0 +1,36 @@
+/* 流程图：左侧形状面板、中间画布、右侧属性面板；.fl-props 和 .dtool 的样式在 base.css */
+.fl-x { display: flex; flex: 1; min-height: 0; position: relative; }
+.fl-stencil { width: 200px; flex: none; position: relative; border-right: 1px solid var(--line); background: var(--surface); }
+.fl-graph { flex: 1; min-width: 0; min-height: 0; background: var(--surface); outline: 0; }
+.fl-graph .x6-graph { outline: 0; }
+.fl-x .fl-props { overflow: auto; }
+.fl-props .row { gap: 6px; }
+.fl-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; box-shadow: inset 0 0 0 2px var(--surface); }
+.fl-swatch.on { border-color: var(--ink); }
+.fl-swatch.c-blue { background: var(--t-blue); } .fl-swatch.c-green { background: var(--t-green); } .fl-swatch.c-orange { background: var(--t-orange); }
+.fl-swatch.c-red { background: var(--t-red); } .fl-swatch.c-purple { background: var(--t-purple); } .fl-swatch.c-gray { background: var(--t-gray); }
+.fl-hint { font-size: 12px; color: var(--ink-3); }
+
+/* 连接桩平时藏着，鼠标到节点上再显示（inline style 里是 hidden，所以要 !important） */
+.fl-graph .x6-node:hover .x6-port-body { visibility: visible !important; }
+.fl-graph .x6-node-selected .x6-port-body { visibility: visible !important; }
+.fl-graph .x6-edge:hover path:nth-child(2) { stroke-width: 2.5; }
+.fl-graph .x6-edge-selected path:nth-child(2) { stroke: var(--accent-btn) !important; stroke-width: 2.5; }
+.x6-widget-selection-box { border: 1.5px solid var(--accent-btn); border-radius: 4px; }
+.x6-widget-selection-rubberband { border-color: var(--accent-btn); background: var(--accent-soft); opacity: .6; }
+.x6-cell-tool-editor { color: var(--ink); font-family: var(--font); outline: 2px solid var(--accent-btn); border-radius: 4px; padding: 2px 4px; }
+
+/* 形状面板用平台的颜色（插件自带的是写死的浅灰） */
+.x6-widget-stencil { color: var(--ink-2); background: var(--surface); }
+.x6-widget-stencil-title { height: 32px; line-height: 32px; padding: 0 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.x6-widget-stencil-group-title { display: none; }
+.x6-widget-stencil-content { top: 32px !important; }
+.x6-widget-stencil .x6-graph { background: transparent; }
+.fl-stencil .x6-node { cursor: grab; }
+
+@media (max-width: 700px) {
+  .fl-stencil { position: absolute; left: 0; top: 0; bottom: 0; z-index: 3; box-shadow: var(--shadow); width: 180px; }
+  .fl-x .fl-props { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; max-height: 55%; border-top: 1px solid var(--line); box-shadow: var(--shadow); }
+  .ed > .dtool .tt .lbl, .ed > .dtool .fl-hint { display: none; }
+  .ed > .dtool { padding: 6px 10px; }
+}

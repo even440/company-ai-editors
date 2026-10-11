@@ -1,0 +1,5 @@
+/* 画板：Excalidraw 铺满内容区。它自带工具栏、主题和手机布局，这里只做尺寸和少量和平台风格的衔接 */
+.wb-x { position: relative; height: 100%; }
+.wb-x .excalidraw { --color-primary: var(--accent-btn); --color-primary-darker: var(--accent-btn-hover); --color-primary-darkest: var(--accent-btn-hover); --color-primary-light: var(--accent-soft); font-family: var(--font); }
+.wb-x .excalidraw .App-menu_top .buttonList { flex-wrap: wrap; }
+.wb-ro { position: absolute; top: 12px; right: 12px; z-index: 5; pointer-events: none; }
