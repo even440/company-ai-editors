@@ -1,8 +1,11 @@
 /**
  * 导出：把 Tiptap JSON 转成 Word（docx 库）和 Markdown。PDF 走浏览器打印，不在这里。
  * 只处理本格式里会出现的节点：标题、段落、列表、引用、代码块、分隔线、表格、图片，以及加粗、斜体、删除线、代码和链接。
+ * 书签（块的 anchor 属性，见 anchors.ts）写成 Word 的书签，# 开头的链接写成文档内链接，导出的 Word 里目录、交叉引用照样能点；
+ * Markdown 里书签写成 <a id> 放在那一行前面。
  */
-import { AlignmentType, BorderStyle, Document, ExternalHyperlink, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType, type IParagraphOptions, type ParagraphChild } from 'docx';
+import { AlignmentType, Bookmark, BorderStyle, Document, ExternalHyperlink, HeadingLevel, InternalHyperlink, ImageRun, LevelFormat, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType, type IParagraphOptions, type ParagraphChild } from 'docx';
+import { anchorNames, anchorOfHref, slugOf, validAnchor } from './anchors';
 import type { DocNode } from './content';
 
 type Marks = { bold?: boolean; italic?: boolean; strike?: boolean; code?: boolean; link?: string };
@@ -19,20 +22,74 @@ const marksOf = (n: DocNode): Marks => {
 };
 const kids = (n: DocNode) => n.content ?? [];
 
+/* ---------- 书签 ---------- */
+
+const ANCHORED = new Set(['heading', 'paragraph', 'listItem']);
+
+/**
+ * 每个块要写的书签：块自己的 anchor，加上只按标题对上的链接（# 后面是标题的 GitHub 写法或原文，和 anchors.ts 的 findAnchor 一样）。
+ * 用块对象当键，导出时按块查
+ */
+function anchorPlan(json: DocNode): Map<DocNode, string[]> {
+  const plan = new Map<DocNode, string[]>(), own = new Set<string>(), headings: DocNode[] = [], links = new Set<string>();
+  const walk = (n: DocNode) => {
+    if (ANCHORED.has(n.type)) { const names = anchorNames(n.attrs?.anchor); if (names.length) { plan.set(n, [...names]); names.forEach((x) => own.add(x)); } }
+    if (n.type === 'heading') headings.push(n);
+    for (const m of n.marks ?? []) if (m.type === 'link') { const a = anchorOfHref(typeof m.attrs?.href === 'string' ? m.attrs.href : null); if (a) links.add(a); }
+    (n.content ?? []).forEach(walk);
+  };
+  walk(json);
+  for (const name of links) {
+    if (own.has(name) || !validAnchor(name)) continue;
+    const h = headings.find((x) => { const t = textOf(x).trim(); return !!t && (t === name || slugOf(t) === name.toLowerCase()); });
+    if (h) plan.set(h, [...(plan.get(h) ?? []), name]);
+  }
+  return plan;
+}
+
+/**
+ * Word 的书签名有规矩：字母（含汉字）或下划线开头，只有字母、数字、下划线，最长 40 个字；不合规的换一下，同一次导出里链接和书签换成同一个名字。
+ * _top 这种 Word 自带的照旧
+ */
+function wordNames() {
+  const map = new Map<string, string>(), used = new Set<string>();
+  return (name: string): string => {
+    let v = map.get(name);
+    if (v) return v;
+    let base = name.replace(/[^\p{L}\p{N}_]/gu, '_');
+    if (!/^[\p{L}_]/u.test(base)) base = 'B_' + base;
+    base = base.slice(0, 40);
+    v = base;
+    for (let i = 2; used.has(v); i++) v = base.slice(0, 40 - String(i).length - 1) + '_' + i;
+    map.set(name, v); used.add(v);
+    return v;
+  };
+}
+
+interface WordCtx { plan: Map<DocNode, string[]>; name: (n: string) => string }
+/** 一个块的内容外面包上它的书签（第一个包住整段文字，其余的是空书签） */
+function withBookmarks(n: DocNode, children: ParagraphChild[], w: WordCtx, extra: string[] = []): ParagraphChild[] {
+  const names = [...new Set([...extra, ...(w.plan.get(n) ?? [])])];
+  if (!names.length) return children;
+  const [first, ...rest] = names.map(w.name);
+  return [...rest.map((id) => new Bookmark({ id, children: [] })), new Bookmark({ id: first, children })];
+}
+
 /* ---------- Word ---------- */
 
 const HEADING = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
 /** 图片在正文里最多这么宽（像素，docx 按 96dpi 算） */
 const MAX_IMG = 600;
 
-function runs(n: DocNode, extra: Marks = {}): ParagraphChild[] {
+function runs(n: DocNode, w: WordCtx, extra: Marks = {}): ParagraphChild[] {
   const out: ParagraphChild[] = [];
   for (const c of kids(n)) {
     if (c.type === 'hardBreak') { out.push(new TextRun({ break: 1 })); continue; }
-    if (c.type !== 'text') { out.push(...runs(c, extra)); continue; }
+    if (c.type !== 'text') { out.push(...runs(c, w, extra)); continue; }
     const m = { ...extra, ...marksOf(c) };
     const run = new TextRun({ text: c.text ?? '', bold: m.bold, italics: m.italic, strike: m.strike, font: m.code ? 'Consolas' : undefined, style: m.link ? 'Hyperlink' : undefined });
-    out.push(m.link ? new ExternalHyperlink({ link: m.link, children: [run] }) : run);
+    const anchor = anchorOfHref(m.link);
+    out.push(anchor !== null ? new InternalHyperlink({ anchor: anchor ? w.name(anchor) : '_top', children: [run] }) : m.link ? new ExternalHyperlink({ link: m.link, children: [run] }) : run);
   }
   return out;
 }
@@ -56,19 +113,21 @@ async function fetchImage(src: string): Promise<{ data: ArrayBuffer; type: 'png'
 
 type Block = Paragraph | Table;
 
-async function blocks(n: DocNode, ctx: { list?: 'bullet' | 'number'; level: number; quote?: boolean }): Promise<Block[]> {
+async function blocks(n: DocNode, w: WordCtx, ctx: { list?: 'bullet' | 'number'; level: number; quote?: boolean; carry?: string[] }): Promise<Block[]> {
   const out: Block[] = [];
   const listOpts = (): Partial<IParagraphOptions> => (ctx.list === 'bullet' ? { bullet: { level: ctx.level } } : ctx.list === 'number' ? { numbering: { reference: 'num', level: ctx.level } } : {});
   const quoteOpts = (): Partial<IParagraphOptions> => (ctx.quote ? { indent: { left: 720 }, border: { left: { style: BorderStyle.SINGLE, size: 12, color: 'C9CFD9', space: 8 } } } : {});
   for (const c of kids(n)) {
+    // 列表项的书签放在它的第一段上
+    const carry = ctx.carry; if (carry) ctx = { ...ctx, carry: undefined };
     switch (c.type) {
-      case 'heading': { const lv = Math.min(6, Math.max(1, Number(c.attrs?.level ?? 2))); out.push(new Paragraph({ heading: HEADING[lv - 1], children: runs(c) })); break; }
-      case 'paragraph': out.push(new Paragraph({ children: runs(c, ctx.quote ? { italic: true } : {}), ...listOpts(), ...quoteOpts() })); break;
+      case 'heading': { const lv = Math.min(6, Math.max(1, Number(c.attrs?.level ?? 2))); out.push(new Paragraph({ heading: HEADING[lv - 1], children: withBookmarks(c, runs(c, w), w, carry) })); break; }
+      case 'paragraph': out.push(new Paragraph({ children: withBookmarks(c, runs(c, w, ctx.quote ? { italic: true } : {}), w, carry), ...listOpts(), ...quoteOpts() })); break;
       case 'bulletList': case 'orderedList':
-        for (const li of kids(c)) out.push(...await blocks(li, { list: c.type === 'bulletList' ? 'bullet' : 'number', level: Math.min(ctx.list ? ctx.level + 1 : 0, 8) }));
+        for (const li of kids(c)) out.push(...await blocks(li, w, { list: c.type === 'bulletList' ? 'bullet' : 'number', level: Math.min(ctx.list ? ctx.level + 1 : 0, 8), carry: w.plan.get(li) }));
         break;
-      case 'listItem': out.push(...await blocks(c, ctx)); break;
-      case 'blockquote': out.push(...await blocks(c, { ...ctx, quote: true })); break;
+      case 'listItem': out.push(...await blocks(c, w, { ...ctx, carry: w.plan.get(c) })); break;
+      case 'blockquote': out.push(...await blocks(c, w, { ...ctx, quote: true })); break;
       case 'codeBlock':
         for (const line of (kids(c).map((t) => t.text ?? '').join('')).split('\n')) out.push(new Paragraph({ children: [new TextRun({ text: line, font: 'Consolas', size: 20 })], shading: { fill: 'F4F6FA' } }));
         break;
@@ -83,7 +142,7 @@ async function blocks(n: DocNode, ctx: { list?: 'bullet' | 'number'; level: numb
         for (const r of kids(c)) {
           const cells: TableCell[] = [];
           for (const cell of kids(r)) {
-            const inner = await blocks(cell, { level: 0 });
+            const inner = await blocks(cell, w, { level: 0 });
             cells.push(new TableCell({ children: inner.length ? inner : [new Paragraph('')], columnSpan: Number(cell.attrs?.colspan) > 1 ? Number(cell.attrs?.colspan) : undefined, shading: cell.type === 'tableHeader' ? { fill: 'F0F3F8' } : undefined }));
           }
           rows.push(new TableRow({ children: cells, tableHeader: kids(r).every((x) => x.type === 'tableHeader') }));
@@ -91,7 +150,7 @@ async function blocks(n: DocNode, ctx: { list?: 'bullet' | 'number'; level: numb
         if (rows.length) out.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }));
         break;
       }
-      default: if (c.content) out.push(...await blocks(c, ctx));
+      default: if (c.content) out.push(...await blocks(c, w, ctx));
     }
   }
   return out;
@@ -99,7 +158,7 @@ async function blocks(n: DocNode, ctx: { list?: 'bullet' | 'number'; level: numb
 
 /** 整篇文档转成 Word 文件。标题放在最上面（宿主负责标题，但导出的文件要带上） */
 export async function toDocx(json: DocNode, title: string): Promise<Blob> {
-  const body = await blocks(json, { level: 0 });
+  const body = await blocks(json, { plan: anchorPlan(json), name: wordNames() }, { level: 0 });
   const doc = new Document({
     title,
     creator: 'Company AI',
@@ -130,19 +189,22 @@ function inlineMd(n: DocNode): string {
 }
 const cellMd = (cell: DocNode) => kids(cell).map((b) => inlineMd(b)).join(' ').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
+/** 块的书签在 Markdown 里写成 <a id>，放在这一行前面（多数 Markdown 显示器认它，[x](#书签) 还能跳） */
+const anchorMd = (n: DocNode) => anchorNames(n.attrs?.anchor).map((a) => `<a id="${a.replace(/&/g, '&amp;')}"></a>`).join('');
+
 function blockMd(n: DocNode, indent = ''): string[] {
   const out: string[] = [];
   for (const c of kids(n)) {
     switch (c.type) {
-      case 'heading': out.push(indent + '#'.repeat(Math.min(6, Math.max(1, Number(c.attrs?.level ?? 2)))) + ' ' + inlineMd(c), ''); break;
-      case 'paragraph': out.push(indent + inlineMd(c), ''); break;
+      case 'heading': out.push(indent + '#'.repeat(Math.min(6, Math.max(1, Number(c.attrs?.level ?? 2)))) + ' ' + anchorMd(c) + inlineMd(c), ''); break;
+      case 'paragraph': out.push(indent + anchorMd(c) + inlineMd(c), ''); break;
       case 'bulletList': case 'orderedList': {
         const start = Number(c.attrs?.start ?? 1);
         kids(c).forEach((li, i) => {
           const marker = c.type === 'bulletList' ? '- ' : `${start + i}. `, pad = ' '.repeat(marker.length);
           const lines = blockMd(li, '');
           while (lines.length && lines[lines.length - 1] === '') lines.pop();
-          lines.forEach((l, j) => out.push(indent + (j === 0 ? marker : l ? pad : '') + l));
+          lines.forEach((l, j) => out.push(indent + (j === 0 ? marker + anchorMd(li) : l ? pad : '') + l));
         });
         out.push('');
         break;

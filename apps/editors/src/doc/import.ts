@@ -5,6 +5,7 @@
 import mammoth from 'mammoth';
 import { marked } from 'marked';
 import type { EditorClient, EditorFile } from '@cai/bridge';
+import { anchorNames, anchorOfHref, slugOf, validAnchor } from './anchors';
 
 const escapeHtml = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 export const extOf = (name: string) => (name.split('.').pop() ?? '').toLowerCase();
@@ -40,13 +41,77 @@ export async function docxToHtml(data: ArrayBuffer, client?: EditorClient): Prom
   return sanitizeHtml(r.value);
 }
 
+/** 能挂书签的块（编辑器里标题只有 1–3 级，4–6 级在 liftAnchors 里换成段落） */
+const TARGETS = 'h1,h2,h3,h4,h5,h6,p,li';
+/** 一个块最多记几个书签（和 anchors.ts、平台 content.ts 一致） */
+const MAX_PER_BLOCK = 16;
+
+/**
+ * 书签挪到所在的块上（data-anchor，见 anchors.ts）。编辑器的结构里没有空的 <a>，不挪就丢了，目录、交叉引用、脚注点了没处去：
+ * Word 的书签 mammoth 转成空的 <a id>；脚注是 <li id> 和带 id 的引用链接；HTML 里还有 <a name> 和块元素的 id。
+ * Word 自己用的隐藏书签（_Toc、_Ref、_Hlk 这类下划线开头的）只留有链接指向的；有链接指向、还没有锚点的标题按 GitHub 的写法补上
+ * （Markdown 里的 [x](#标题文字)）。4–6 级标题换成段落：解析时本来也会变成段落，先换才留得住书签。
+ */
+export function liftAnchors(html: string): string {
+  const d = new DOMParser().parseFromString(html, 'text/html'), body = d.body;
+  const linked = new Map<string, string>();
+  for (const a of body.querySelectorAll('a[href^="#"]')) { const n = anchorOfHref(a.getAttribute('href')); if (n) linked.set(n.toLowerCase(), n); }
+  const add = (el: Element, name: string | null) => {
+    if (!name || !validAnchor(name) || (name.startsWith('_') && !linked.has(name.toLowerCase()))) return;
+    const cur = anchorNames(el.getAttribute('data-anchor'));
+    if (!cur.includes(name) && cur.length < MAX_PER_BLOCK) el.setAttribute('data-anchor', [...cur, name].join(' '));
+  };
+  /** 书签落在哪个块：在块里就是那个块；表格单元格、引用里直接写的文字先包成段落；块外面的挂到后面最近的块上（没有就最后一块） */
+  const targetOf = (el: Element): Element | null => {
+    const own = el.closest(TARGETS);
+    if (own) return own;
+    const box = el.closest('td,th,blockquote');
+    if (box) {
+      const inner = box.querySelector(TARGETS);
+      if (inner) return inner;
+      const p = d.createElement('p'); p.append(...box.childNodes); box.append(p); return p;
+    }
+    const all = [...body.querySelectorAll(TARGETS)];
+    return all.find((b) => !!(el.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)) ?? all.at(-1) ?? null;
+  };
+  // 书签：没有 href 的 <a id> / <a name>。拿掉这个空壳，里面有字的留着
+  for (const a of [...body.querySelectorAll('a[id]:not([href]), a[name]:not([href])')]) {
+    const block = targetOf(a);
+    if (block) { add(block, a.getAttribute('id')); add(block, a.getAttribute('name')); }
+    a.replaceWith(...a.childNodes);
+  }
+  // 别的元素上的 id（脚注、HTML 的 <h2 id>、<section id>…）：块本身就挂上，容器挂到里面第一个块
+  for (const el of [...body.querySelectorAll('[id]')]) {
+    const block = el.matches(TARGETS) ? el : (el.querySelector(TARGETS) ?? targetOf(el));
+    if (block) add(block, el.getAttribute('id'));
+    el.removeAttribute('id');
+  }
+  // 有链接指向、还没有锚点的标题：GitHub 的写法（重名的依次加 -1、-2）
+  if (linked.size) {
+    const seen = new Map<string, number>();
+    for (const h of body.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
+      const base = slugOf(h.textContent ?? '');
+      if (!base) continue;
+      const n = seen.get(base) ?? 0; seen.set(base, n + 1);
+      const name = linked.get(n ? `${base}-${n}` : base);
+      if (name) add(h, name);
+    }
+  }
+  for (const h of [...body.querySelectorAll('h4,h5,h6')]) {
+    const p = d.createElement('p'), v = h.getAttribute('data-anchor');
+    if (v) p.setAttribute('data-anchor', v);
+    p.append(...h.childNodes); h.replaceWith(p);
+  }
+  return body.innerHTML;
+}
+
 /** 按扩展名把源文件转成 HTML；不认识的扩展名按纯文本处理 */
 export async function importToHtml(file: EditorFile, data: ArrayBuffer, client?: EditorClient): Promise<string> {
   const ext = extOf(file.name);
-  if (ext === 'docx') return docxToHtml(data, client);
+  if (ext === 'docx') return liftAnchors(await docxToHtml(data, client));
   const text = new TextDecoder('utf-8').decode(data);
-  if (ext === 'md' || ext === 'markdown') return markdownToHtml(text);
-  if (ext === 'html' || ext === 'htm') return sanitizeHtml(text);
+  if (ext === 'md' || ext === 'markdown') return liftAnchors(markdownToHtml(text));
+  if (ext === 'html' || ext === 'htm') return liftAnchors(sanitizeHtml(text));
   return textToHtml(text);
 }
 

@@ -1,0 +1,9 @@
+/* 书签和文档内链接（anchors.ts）：跳过去以后顶上留一点空，目标块闪一下 */
+.doc-body [data-anchor] { scroll-margin-top: 16px; }
+.doc-body a[href^="#"] { cursor: pointer; }
+.doc-body .anchor-flash { border-radius: 4px; animation: anchor-flash 1.6s ease-out; }
+@keyframes anchor-flash {
+  0%, 35% { background: var(--accent-soft); box-shadow: 0 0 0 4px var(--accent-soft); }
+  100% { background: transparent; box-shadow: 0 0 0 4px transparent; }
+}
+@media print { .doc-body .anchor-flash { animation: none; } }
