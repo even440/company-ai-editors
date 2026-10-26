@@ -3,6 +3,8 @@
  * 用法：node tools/mock-host.mjs [端口，默认 5180] [编辑器地址，默认 http://localhost:5174/editors]
  * 打开 http://localhost:5180/host.html?kind=sheet（可加 &doc=<编号>&mode=read&theme=dark）。
  * 令牌格式：<内容编号>:<权限>，权限 owner | edit | read | respond。
+ * 评论：编辑器 ready 里带 comments: true 时，宿主页把评论列表发过去；comment-new 直接建一条（内容是固定文字），
+ * 列表存在宿主页的 localStorage 里（按内容编号），右边可以解决、定位、删除。
  */
 import fs from 'node:fs';
 import http from 'node:http';
@@ -41,12 +43,13 @@ const hostPage = (url) => {
 header{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #d5dbe6;flex-wrap:wrap}header b{font-size:15px}
 main{display:grid;grid-template-columns:1fr 300px;min-height:0}iframe{border:0;width:100%;height:100%;background:#fff}
 aside{border-left:1px solid #d5dbe6;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;padding:8px}aside div{border-bottom:1px solid #e8ecf3;padding:3px 0;word-break:break-all}
+#cmts{font-family:system-ui,sans-serif;margin-bottom:8px}#cmts p{margin:0 0 4px;font-weight:600}#cmts .c{display:flex;gap:4px;align-items:center;flex-wrap:wrap}#cmts .c.on{background:#fff3d4}#cmts .c.orphan q{text-decoration:line-through;color:#b02a2a}#cmts .c.done q{color:#6f7b8f}#cmts q{flex:1 1 100%}
 button,select,input{font:inherit}</style></head><body>
 <header><b id="title">${kind}</b><span id="status" style="color:#6f7b8f">…</span><span style="flex:1"></span>
 <button data-cmd="theme">切换主题</button><button data-cmd="readonly">只读开关</button><button data-cmd="insert">插入一段</button><button data-cmd="flush">立即保存</button>
 <select id="exp"><option value="">导出为…</option></select><input id="cmd" placeholder="command 名称[:参数]" style="width:180px"><button data-cmd="command">发命令</button>
 <a href="/host.html?kind=${kind}&doc=${docId}&perm=read&mode=read" style="margin-left:8px">只读打开</a></header>
-<main><iframe id="f" src="${src}" allow="clipboard-read; clipboard-write; fullscreen"></iframe><aside id="log"></aside></main>
+<main><iframe id="f" src="${src}" allow="clipboard-read; clipboard-write; fullscreen"></iframe><aside><section id="cmts"></section><div id="log"></div></aside></main>
 <script>
 const f = document.getElementById('f'), log = document.getElementById('log'), status = document.getElementById('status'); let theme = '${theme}', ro = ${mode === 'read'};
 const send = (m) => f.contentWindow.postMessage({ source: 'cai-host', ...m }, '*');
@@ -54,7 +57,32 @@ const EXPORTS = ${JSON.stringify({ doc: [['docx', 'Word'], ['md', 'Markdown'], [
 for (const [v, l] of EXPORTS['${kind}'] || []) { const o = document.createElement('option'); o.value = v; o.textContent = l; document.getElementById('exp').appendChild(o); }
 document.getElementById('exp').onchange = (e) => { if (e.target.value) { send({ type: 'export', format: e.target.value }); e.target.value = ''; } };
 document.querySelectorAll('[data-cmd]').forEach((b) => b.onclick = () => { const c = b.dataset.cmd; if (c === 'theme') { theme = theme === 'dark' ? 'light' : 'dark'; send({ type: 'theme', theme }); } else if (c === 'readonly') { ro = !ro; send({ type: 'readonly', value: ro }); } else if (c === 'insert') send({ type: 'insert', text: '这是宿主插入的一段文字（' + new Date().toLocaleTimeString() + '）。' }); else if (c === 'flush') send({ type: 'flush' }); else if (c === 'command') { const [name, ...rest] = document.getElementById('cmd').value.split(':'); send({ type: 'command', name, args: rest.join(':') || undefined }); } });
-window.addEventListener('message', (e) => { const m = e.data; if (!m || m.source !== 'cai-editor') return; const d = document.createElement('div'); d.textContent = new Date().toLocaleTimeString() + ' ' + JSON.stringify(m); log.prepend(d); window.__msgs = (window.__msgs || []).concat([m]);
+// 评论：存在 localStorage 里，按内容编号分开
+const CK = 'mock-comments:${docId}';
+let threads = []; try { threads = JSON.parse(localStorage.getItem(CK) || '[]'); } catch {}
+let orphans = [], activeCid = '';
+const saveThreads = () => { try { localStorage.setItem(CK, JSON.stringify(threads)); } catch {} };
+const sendComments = () => send({ type: 'comments', items: threads.map((t) => ({ cid: t.cid, anchor: t.anchor, resolved: t.resolved })) });
+const renderComments = () => {
+  const box = document.getElementById('cmts'); box.innerHTML = '<p>评论（' + threads.length + '）</p>';
+  for (const t of threads) {
+    const row = document.createElement('div'); row.className = 'c' + (t.cid === activeCid ? ' on' : '') + (orphans.includes(t.cid) ? ' orphan' : '') + (t.resolved ? ' done' : '');
+    const q = document.createElement('q'); q.textContent = t.quote || '（空）'; row.appendChild(q);
+    const btn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; row.appendChild(b); };
+    btn('定位', () => { activeCid = t.cid; send({ type: 'comment-focus', cid: t.cid }); renderComments(); });
+    btn(t.resolved ? '重开' : '解决', () => { t.resolved = !t.resolved; saveThreads(); sendComments(); renderComments(); });
+    btn('删除', () => { threads = threads.filter((x) => x !== t); saveThreads(); sendComments(); renderComments(); });
+    box.appendChild(row);
+  }
+};
+renderComments();
+window.__comments = () => ({ threads, orphans, activeCid });
+window.addEventListener('message', (e) => { const m = e.data; if (!m || m.source !== 'cai-editor') return;
+  if (m.type === 'ready' && m.comments) sendComments();
+  if (m.type === 'comment-new') { send({ type: 'comment-pending', anchor: m.anchor }); const t = { cid: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), anchor: m.anchor, quote: m.quote, resolved: false }; threads.push(t); saveThreads(); activeCid = t.cid; sendComments(); send({ type: 'comment-pending', anchor: null }); send({ type: 'comment-focus', cid: t.cid }); renderComments(); }
+  if (m.type === 'comment-open') { activeCid = m.cid; send({ type: 'comment-focus', cid: m.cid }); renderComments(); }
+  if (m.type === 'comment-orphans') { orphans = m.cids; renderComments(); }
+  if (m.type === 'comment-moved') { const t = threads.find((x) => x.cid === m.cid); if (t) { t.anchor = m.anchor; saveThreads(); } } const d = document.createElement('div'); d.textContent = new Date().toLocaleTimeString() + ' ' + JSON.stringify(m); log.prepend(d); window.__msgs = (window.__msgs || []).concat([m]);
   if (m.type === 'title') document.getElementById('title').textContent = m.title; if (m.type === 'ready') document.getElementById('title').textContent = m.title;
   if (m.type === 'saving') status.textContent = '保存中…'; if (m.type === 'saved') status.textContent = '已保存 v' + m.version; if (m.type === 'dirty' && m.dirty) status.textContent = '有改动'; if (m.type === 'error') status.textContent = '出错：' + m.message; });
 </script></body></html>`;

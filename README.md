@@ -30,7 +30,8 @@ npm run typecheck
 见 `packages/bridge/src/protocol.ts`：
 
 - 接口：`GET/PUT/PATCH {api}/api/v1/editor/doc`、`POST …/presence`、`POST …/asset`、`GET …/asset/:id`、`GET …/directory`、`GET/POST …/responses`、`POST …/collecting`，都用 `Authorization: Bearer <token>`。
-- 消息：编辑器 → 宿主 `ready / title / saving / saved / dirty / conflict / collab / present / error / navigate / request / exported / imported / selection`；宿主 → 编辑器 `theme / title / insert / export / readonly / command / focus / flush`。
+- 消息：编辑器 → 宿主 `ready / title / saving / saved / dirty / conflict / collab / present / error / navigate / request / exported / imported / selection / comment-new / comment-open / comment-orphans / comment-moved`；宿主 → 编辑器 `theme / title / insert / export / readonly / command / focus / flush / comments / comment-focus / comment-pending`。
+- 评论（文档、表格）：`ready` 里带 `comments: true`。编辑器只管选范围、生成锚点（`CommentAnchor`，宿主原样保存的不透明 JSON）、画高亮、报点击和找不到的锚点；评论串、回复、@ 提到、通知都在宿主。加评论不改内容，只读的人也能评论。
 - 文档格式的实时协同连到宿主的 `ws(s)://…/ws/collab/<编号>?token=…`，协议和 y-websocket 相同。
 
 ## 内容格式

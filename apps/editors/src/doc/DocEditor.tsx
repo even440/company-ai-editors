@@ -5,9 +5,10 @@
  *   编辑器只把连接状态（collab）、在线的人（present）和标题变化（title）告诉宿主；
  * - 普通（地址参数 collab=0）：直接加载 s.doc.content，改动后 markDirty 走会话的自动保存。
  * 协同模式 6 秒没同步上、或服务端拒绝时，退成只读视图并提示，可以重试。
+ * 评论（comments.ts）：选中文字后点浮出来的「评论」或按 Ctrl/⌘+Alt+M，编辑和只读都能用；评论串本身在宿主那边。
  */
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
-import type { JSONContent } from '@tiptap/core';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type RefObject } from 'react';
+import type { Extensions, JSONContent } from '@tiptap/core';
 import { Collaboration } from '@tiptap/extension-collaboration';
 import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
 import { Placeholder, UndoRedo } from '@tiptap/extensions';
@@ -17,6 +18,7 @@ import * as Y from 'yjs';
 import type { EditorToHost, PresenceUser, Session, Snapshot } from '@cai/bridge';
 import { useHost, useTheme } from '../shell/session';
 import { Field, Icon, Modal, Select, Toaster, Toolbar, cx, toast } from '../shell/ui';
+import { DocComments } from './comments';
 import { contentOf, paragraphsOf, plainOf, type DocNode } from './content';
 import { toDocx, toMarkdown } from './export';
 import { importToHtml, titleOf } from './import';
@@ -48,14 +50,15 @@ function setYText(y: Y.Text, v: string) {
 
 /* ---------- 正文 ---------- */
 
-/** 正文编辑器。协同模式绑在 Y.Doc 上（连接变了重新建）；普通模式直接加载内容 */
-function Body({ s, ysess, editable, onEditor, onUpdate, onSelection }: { s: Session; ysess: YSession | null; editable: boolean; onEditor: (e: Editor | null) => void; onUpdate: (e: Editor) => void; onSelection: (e: Editor) => void }) {
+/** 正文编辑器。协同模式绑在 Y.Doc 上（连接变了重新建）；普通模式直接加载内容。extra 是只影响交互的扩展（评论） */
+function Body({ s, ysess, editable, extra, onEditor, onUpdate, onSelection }: { s: Session; ysess: YSession | null; editable: boolean; extra: Extensions; onEditor: (e: Editor | null) => void; onUpdate: (e: Editor) => void; onSelection: (e: Editor) => void }) {
   const upd = useRef(onUpdate), sel = useRef(onSelection);
   upd.current = onUpdate; sel.current = onSelection;
   const editor = useEditor({
     extensions: [
       ...schemaExtensions(), placeholder(),
       ...(ysess ? [Collaboration.configure({ document: ysess.doc, field: Y_FIELD }), CollaborationCaret.configure({ provider: ysess.provider, user: ysess.user })] : [UndoRedo]),
+      ...extra,
     ],
     content: ysess ? undefined : (contentOf(s.doc.content) as JSONContent),
     editable, shouldRerenderOnTransaction: false,
@@ -128,6 +131,58 @@ function LinkDialog({ editor, onClose }: { editor: Editor; onClose: () => void }
   );
 }
 
+/* ---------- 评论按钮 ---------- */
+
+/** 选区里有没有字（只选了图片、空段落时不出评论按钮）；只看选中的那部分，碰到第一个字就停 */
+function hasText(e: Editor): boolean {
+  const { from, to } = e.state.selection;
+  if (from === to) return false;
+  let found = false;
+  e.state.doc.nodesBetween(from, to, (n, pos) => {
+    if (found) return false;
+    if (n.isText && /\S/.test((n.text ?? '').slice(Math.max(0, from - pos), to - pos))) found = true;
+    return !found;
+  });
+  return found;
+}
+
+/** 选中文字后浮在选区末尾下方的「评论」按钮，编辑和只读都有。放在正文的滚动容器里，跟着内容一起滚 */
+function CommentButton({ editor, box, made, onComment }: { editor: Editor; box: RefObject<HTMLDivElement | null>; made: number; onComment: () => void }) {
+  const sel = useEditorState({ editor, selector: ({ editor: e }) => (hasText(e) ? `${e.state.selection.from}:${e.state.selection.to}` : '') });
+  // 拖着选的时候不出来，松手再出来；评论过（点按钮或快捷键，made 加一）就藏起来，选区变了再出来
+  const [drag, setDrag] = useState(false), [done, setDone] = useState(''), [, relayout] = useState(0);
+  const selNow = useRef(sel); selNow.current = sel;
+  useEffect(() => { if (made) setDone(selNow.current); }, [made]);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const down = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.('.cmt-btn')) setDrag(true); };
+    const up = () => setDrag(false), resize = () => relayout((n) => n + 1);
+    el.addEventListener('pointerdown', down);
+    for (const t of ['pointerup', 'pointercancel', 'blur'] as const) window.addEventListener(t, up);
+    window.addEventListener('resize', resize);
+    return () => {
+      el.removeEventListener('pointerdown', down);
+      for (const t of ['pointerup', 'pointercancel', 'blur'] as const) window.removeEventListener(t, up);
+      window.removeEventListener('resize', resize);
+    };
+  }, [box]);
+  const el = box.current;
+  if (!sel || drag || done === sel || !el) return null;
+  let top = 0, left = 0;
+  try {
+    const c = editor.view.coordsAtPos(editor.state.selection.to, -1), r = el.getBoundingClientRect();
+    top = c.bottom - r.top + el.scrollTop + 8;
+    left = Math.max(8, Math.min(c.left - r.left + el.scrollLeft - 28, el.scrollLeft + el.clientWidth - 96));
+  } catch { return null; }
+  return (
+    <button type="button" className="btn sm cmt-btn" style={{ top, left }} title="评论（Ctrl+Alt+M，Mac 上 ⌘+⌥+M）"
+      onMouseDown={(e) => e.preventDefault()} onClick={onComment}>
+      <Icon name="chat" />评论
+    </button>
+  );
+}
+
 const CONN_TEXT: Record<CollabState, string> = { connecting: '正在连接……', connected: '已连接', reconnecting: '正在重连……', offline: '离线，修改会在重连后同步', denied: '无法协同', failed: '没有连上协同服务' };
 
 /* ---------- 编辑器 ---------- */
@@ -139,7 +194,30 @@ export function DocEditor({ session: s }: { session: Session }) {
   const roRef = useRef(ro); roRef.current = ro;
   const [editor, setEditor] = useState<Editor | null>(null);
   const [link, setLink] = useState(false), [busy, setBusy] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null), bodyBox = useRef<HTMLDivElement>(null);
+
+  // 评论：控制器和扩展一个编辑器页面一份，编辑器因为连接变化重建时沿用；宿主发过 comments 才显示入口
+  const cmt = useMemo(() => new DocComments((m) => s.send(m)), [s]);
+  const cmtExt = useMemo(() => [cmt.extension()], [cmt]);
+  const [cmtOn, setCmtOn] = useState(false), [made, setMade] = useState(0);
+  const comment = useCallback(() => { if (cmt.create()) setMade((n) => n + 1); else toast('先选中要评论的文字'); }, [cmt]);
+  // 宿主可能在编辑器挂上之前就发来了评论列表（会话替我们记着）
+  useEffect(() => {
+    const c = s.lastHost('comments'), p = s.lastHost('comment-pending'), f = s.lastHost('comment-focus');
+    if (c) { cmt.setItems(c.items); setCmtOn(true); }
+    if (p) cmt.setPending(p.anchor);
+    if (f) cmt.focus(f.cid);
+  }, [s, cmt]);
+  // 快捷键 Ctrl/⌘+Alt+M：挂在 window 上，只读时正文拿不到焦点也能用。Mac 上 Alt+M 会打出 µ，所以看 code 不看 key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.altKey || e.shiftKey || e.code !== 'KeyM' || !cmt.enabled) return;
+      e.preventDefault();
+      comment();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cmt, comment]);
 
   // 协同连接：一篇文档一个 Y.Doc 和一条 WebSocket；点了「重试」就重连
   const [ysess, setYsess] = useState<YSession | null>(null), [attempt, setAttempt] = useState(0);
@@ -193,6 +271,8 @@ export function DocEditor({ session: s }: { session: Session }) {
   const live = collab && synced && conn !== 'denied' && !!ysess;
   /** 正文能不能改：只读、还没连上协同、协同失败都不能 */
   const editable = !ro && (!collab || live);
+  // 协同模式没连上时看到的是打开时的内容，按它判断「原文找不到」不准，先不报
+  useEffect(() => { cmt.setReportable(!collab || live); }, [cmt, collab, live]);
 
   // 普通模式：改动后交给会话自动保存；协同模式服务端自己落库
   const onUpdate = useCallback((e: Editor) => { if (!collab && !roRef.current) s.markDirty(() => snapshot(e)); }, [collab, s]);
@@ -207,7 +287,7 @@ export function DocEditor({ session: s }: { session: Session }) {
       if (text !== lastSel.current) { lastSel.current = text; s.send({ type: 'selection', text }); }
     }, SELECTION_EVERY);
   }, [s]);
-  const onEditor = useCallback((e: Editor | null) => { setEditor(e); if (import.meta.env.DEV) (window as unknown as { __editor?: Editor | null }).__editor = e; }, []);
+  const onEditor = useCallback((e: Editor | null) => { setEditor(e); cmt.attach(e); if (import.meta.env.DEV) (window as unknown as { __editor?: Editor | null }).__editor = e; }, [cmt]);
 
   /** 宿主改了标题：协同模式写进 Y.Text，普通模式只记下来 */
   const applyTitle = useCallback((t: string) => {
@@ -244,6 +324,9 @@ export function DocEditor({ session: s }: { session: Session }) {
     if (m.type === 'readonly') setRo(m.value);
     else if (m.type === 'title') applyTitle(m.title);
     else if (m.type === 'focus') editor?.commands.focus();
+    else if (m.type === 'comments') { cmt.setItems(m.items); setCmtOn(true); }
+    else if (m.type === 'comment-focus') cmt.focus(m.cid);
+    else if (m.type === 'comment-pending') cmt.setPending(m.anchor);
     else if (!editor) return;
     else if (m.type === 'insert') {
       if (!editor.isEditable) { toast('现在是只读状态，插不进去'); return; }
@@ -281,14 +364,15 @@ export function DocEditor({ session: s }: { session: Session }) {
   return (
     <div className="ed" style={{ colorScheme: theme }} data-collab={collab ? conn : 'off'}>
       {editable && editor ? <Tools editor={editor} onImage={() => fileInput.current?.click()} onLink={() => setLink(true)} /> : null}
-      <div className="ed-body">
+      <div className="ed-body" ref={bodyBox}>
         <article className="doc">
           {note}
           {busy ? <div className="note ed-note"><span className="spin" /> {busy}</div> : null}
-          {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} />
+          {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} extra={cmtExt} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} />
             : <div className="ed-state"><span className="spin" role="status" aria-label={CONN_TEXT[conn]} /></div>}
-          {ro && showBody ? <p className="note ed-note">你对这篇文档只有阅读权限。</p> : null}
+          {ro && showBody ? <p className="note ed-note">你对这篇文档只有阅读权限{cmtOn ? '，可以选中文字加评论' : ''}。</p> : null}
         </article>
+        {cmtOn && editor && showBody ? <CommentButton editor={editor} box={bodyBox} made={made} onComment={comment} /> : null}
       </div>
       <input ref={fileInput} type="file" accept="image/*" className="sr" aria-label="选择图片" onChange={(e) => void pickImage(e)} />
       {link && editor ? <LinkDialog editor={editor} onClose={() => setLink(false)} /> : null}

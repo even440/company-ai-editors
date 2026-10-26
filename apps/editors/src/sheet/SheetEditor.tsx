@@ -2,6 +2,7 @@
  * 表格编辑器：Univer 开源核心接到编辑会话上。
  * 内容是 Univer 的 IWorkbookData；格子、行列、合并、样式等任何修改模型的 mutation 都算改动，停下来后由会话自动保存。
  * 宿主消息：export（xlsx / csv）、insert（末尾追加一行文字）、readonly、title；theme 和 flush 由会话处理。
+ * 评论（comments.tsx）：comments / comment-focus / comment-pending 交给 SheetComments，评论不改格子、不保存，只读也能评论。
  */
 import { useEffect, useRef, useState } from 'react';
 import { CommandType, LocaleType, createUniver, defaultTheme, mergeLocales, type FUniver, type IWorkbookData } from '@univerjs/presets';
@@ -10,6 +11,7 @@ import zhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import { safeName, type Session } from '@cai/bridge';
 import { useHost, useTheme } from '../shell/session';
 import { Icon, Toaster, toast } from '../shell/ui';
+import { SheetComments } from './comments';
 import { csvBlob, emptyWorkbook, fromSheetJS, isWorkbookData, lastRowOf, plainOf, readSpreadsheet, xlsxBlob } from './convert';
 
 /** 这些 mutation 不改内容（渲染时算行高、过滤器脏标记、权限点、空操作），不算改动 */
@@ -49,9 +51,11 @@ function appendText(wb: FWorkbook, text: string) {
 
 export function SheetEditor({ session: s }: { session: Session }) {
   const box = useRef<HTMLDivElement>(null);
-  const inst = useRef<FUniver | null>(null);
+  const inst = useRef<FUniver | null>(null), cmtRef = useRef<SheetComments | null>(null);
   const [ro, setRo] = useState(s.readonly);
   const [busy, setBusy] = useState<string | null>(null);
+  /** 宿主发过 comments（支持评论）以后，只读提示条上出「评论」按钮：只读时 Univer 的右键菜单不出来 */
+  const [cmtOn, setCmtOn] = useState(false);
   const theme = useTheme();
 
   useEffect(() => {
@@ -67,6 +71,13 @@ export function SheetEditor({ session: s }: { session: Session }) {
     inst.current = api;
     // 开发时把 API 挂到 window 上，截图脚本和控制台调试用；正式构建里没有
     if (import.meta.env.DEV) (window as unknown as { univerAPI?: FUniver }).univerAPI = api;
+    // 评论：宿主可能在这之前就发来了列表（会话替我们记着）
+    const cmt = new SheetComments(univer, api, (m) => s.send(m), toast);
+    cmtRef.current = cmt;
+    const c0 = s.lastHost('comments'), p0 = s.lastHost('comment-pending'), f0 = s.lastHost('comment-focus');
+    if (c0) { cmt.setItems(c0.items); setCmtOn(true); }
+    if (p0) cmt.setPending(p0.anchor);
+    if (f0) cmt.focus(f0.cid);
     let disposed = false;
     // 工作簿刚建好的一小段时间里，Univer 自己会跑一些 mutation（算公式、量行高），不算改动
     let settling = true;
@@ -101,6 +112,7 @@ export function SheetEditor({ session: s }: { session: Session }) {
       settling = true;
       const wb = api.createWorkbook(data);
       permissionInit ??= watchPermissionInit();
+      cmt.attach(wb);
       setTimeout(() => { settling = false; }, 800);
       return wb;
     };
@@ -134,13 +146,18 @@ export function SheetEditor({ session: s }: { session: Session }) {
       } finally { if (!disposed) setBusy(null); }
     })();
 
-    return () => { disposed = true; inst.current = null; permissionInit?.unsubscribe(); univer.dispose(); };
+    return () => { disposed = true; inst.current = null; cmtRef.current = null; cmt.dispose(); permissionInit?.unsubscribe(); univer.dispose(); };
   }, [s]);
 
-  // 主题跟着宿主：Univer 自带深色模式
-  useEffect(() => { inst.current?.toggleDarkMode(theme === 'dark'); }, [theme]);
+  // 主题跟着宿主：Univer 自带深色模式；评论标记的颜色也重新取
+  useEffect(() => { inst.current?.toggleDarkMode(theme === 'dark'); cmtRef.current?.themeChanged(); }, [theme]);
 
   useHost((m) => {
+    // 评论的消息工作簿建好之前也收：先记在 SheetComments 里
+    const cmt = cmtRef.current;
+    if (m.type === 'comments') { cmt?.setItems(m.items); setCmtOn(true); return; }
+    if (m.type === 'comment-focus') { cmt?.focus(m.cid); return; }
+    if (m.type === 'comment-pending') { cmt?.setPending(m.anchor); return; }
     const api = inst.current, wb = api?.getActiveWorkbook();
     if (!api || !wb) return;
     if (m.type === 'export') {
@@ -165,7 +182,12 @@ export function SheetEditor({ session: s }: { session: Session }) {
 
   return (
     <div className="ed sh-ed">
-      {ro ? <div className="sh-ro" role="status"><Icon name="lock" /><b>只读</b><span>这份表格只能查看，不能修改</span></div> : null}
+      {ro ? (
+        <div className="sh-ro" role="status">
+          <Icon name="lock" /><b>只读</b><span>这份表格只能查看，不能修改{cmtOn ? '；可以选中格子加评论' : ''}</span>
+          {cmtOn ? <button type="button" className="btn sm" title="评论选中的格子（Ctrl+Alt+M，Mac 上 ⌘+⌥+M）" onClick={() => cmtRef.current?.create()}><Icon name="chat" />评论</button> : null}
+        </div>
+      ) : null}
       <div className="sh-wrap">
         <div className="sh-univer" ref={box} />
         {busy ? <div className="sh-busy"><span className="spin" role="status" aria-label="加载中" /><span>{busy}</span></div> : null}

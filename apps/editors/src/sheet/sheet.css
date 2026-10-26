@@ -19,3 +19,7 @@ html[data-theme="dark"] .sh-univer { background: var(--surface); color-scheme: d
   .sh-ro { padding: 5px 12px; font-size: 12.5px; }
   .sh-ro span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* 只读提示条右边的「评论」按钮（只读时 Univer 的右键菜单不出来） */
+.sh-ro .btn.sm { margin-left: auto; height: 26px; padding: 0 10px; flex: none; }
+.sh-ro .btn.sm .ic { width: 14px; height: 14px; }

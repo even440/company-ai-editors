@@ -16,12 +16,13 @@
 1. `const s = await openSession()`（React 里用 `mount` / `useSession`）。`s.doc` 是内容和权限，`s.readonly` 为真时不能改。
 2. 内容变了就 `s.markDirty(() => ({ content, plain }))`，会话停下来 1.5 秒后自动保存；`plain` 是给搜索和 AI 用的纯文本，按自己的结构生成，兜底用 `plainOfJson`。
 3. 版本冲突（别处改过）默认提示并刷新；要更好的处理用 `s.onConflict`。
-4. 宿主的消息用 `useHost((m) => …)` 收：`theme` 已由会话处理（`html[data-theme]`，样式里的变量会跟着变），`export`（格式见 `EXPORTS`）、`insert`、`readonly`、`command`、`flush` 由各编辑器处理。导出用 `s.download(blob, 文件名)`。
+4. 宿主的消息用 `useHost((m) => …)` 收：`theme` 已由会话处理（`html[data-theme]`，样式里的变量会跟着变），`export`（格式见 `EXPORTS`）、`insert`、`readonly`、`command`、`flush` 由各编辑器处理。导出用 `s.download(blob, 文件名)`。表示状态的消息（`comments`、`comment-focus`、`comment-pending`）可能在组件挂上之前就到了，挂上时用 `s.lastHost(type)` 补上。
 5. `s.doc.importFile` 有值时表示这份内容刚从文件导入、还没转换：下载它（`s.client.assetUrl(id)`）、转换成本格式、保存，再调 `s.client.imported()`，并 `s.send({ type: 'imported', title })`。
 6. 图片等附件用 `s.client.upload(file)`，得到带令牌的地址。
 7. 标题由宿主显示和修改，编辑器不画标题；宿主发 `title` 消息时同步到自己的状态（幻灯片等会把标题写进内容的格式需要）。
 8. 界面文字用中文，类名沿用 `base.css`（`.btn`、`.tt`、`.dtool`、`.input`、`.select`、`.chip`、`.card`、`.tbl`、`.modal` 等；原型里各格式的样式 `.sh-*`、`.bs-*`、`.sv-*`、`.mn-*`、`.wb-*`、`.fl-*`、`.fv-*` 也都在）。深色主题靠变量，不写死颜色。手机宽度（390px）也要能用。
 9. 注释用中文，说明「为什么」。不新增依赖；确实需要时在报告里说明，不要自己 `npm install`。
+10. 评论（现在是 doc、sheet）：`mount(…, { comments: true })` 让 `ready` 带上能力标记；宿主发过 `comments`（哪怕是空数组）才显示评论入口。评论绝不能改内容（不写样式标记、不改格子、不调保存），只读的人也要能评论。锚点格式见 `protocol.ts` 的 `CommentAnchor`，各编辑器的做法见各自的 `README.md`。
 
 ## 内容格式（content 的 JSON）
 

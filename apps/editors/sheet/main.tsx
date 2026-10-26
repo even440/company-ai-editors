@@ -5,4 +5,4 @@ import '../src/sheet/sheet.css';
 import { mount } from '../src/shell/session';
 import { SheetEditor } from '../src/sheet/SheetEditor';
 
-mount((s) => <SheetEditor session={s} />);
+mount((s) => <SheetEditor session={s} />, { comments: true });

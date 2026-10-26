@@ -53,6 +53,61 @@ export interface PresenceUser { id: string; name: string; editing: boolean }
 /** 问卷的一份答卷 */
 export interface SurveyResponse { id: string; userId: string | null; userName: string; at: string; answers: Record<string, unknown> }
 
+/* ---------- 评论（锚在内容上的批注） ---------- */
+
+/**
+ * 评论的锚点：编辑器生成、宿主原样保存的 JSON，宿主不需要看懂里面的字段（序列化后不超过 COMMENT_ANCHOR_MAX 字节）。
+ * 评论串、回复、@ 提到、通知都由宿主负责；编辑器只管选范围、画高亮、报点击和找不到的锚点。
+ * 加评论不改内容本身（不写样式标记、不改格子、不调保存接口），所以只有阅读权限的人也能评论。
+ */
+export type CommentAnchor = DocCommentAnchor | SheetCommentAnchor;
+
+/** 文档里的一段文字 */
+export interface DocCommentAnchor {
+  kind: 'doc';
+  /** 锚点格式的版本 */
+  v: 1;
+  /**
+   * 起点、终点的 Yjs 相对位置（Y.relativePositionToJSON 的结果，挂在协同正文的 Y.XmlFragment 上），别人同时改正文也跟得住。
+   * 普通模式（collab=0）或没连上协同时创建的评论没有，为 null；相对位置失效时（比如协同服务按保存的内容重建了 Y.Doc）按下面的文字找。
+   */
+  rel: { from: unknown; to: unknown } | null;
+  /** 选中的纯文字（段落之间是换行），最多 COMMENT_QUOTE_MAX 字 */
+  quote: string;
+  /** 选中文字的完整长度：超过 COMMENT_QUOTE_MAX 字时 quote 被截断，按文字找回来时用它恢复整段范围 */
+  len: number;
+  /** 前后各最多 COMMENT_CONTEXT 字的上下文：按文字找时，用它在多处相同的文字里挑对的那处 */
+  prefix: string;
+  suffix: string;
+  /** 创建时的位置（ProseMirror 绝对位置），只在多处文字和上下文都一样时用来挑最近的 */
+  at: number;
+}
+
+/** 表格里的一个格子或一片区域：行列号从 0 起，含两端 */
+export interface SheetCommentAnchor {
+  kind: 'sheet';
+  v: 1;
+  sheetId: string;
+  row: number;
+  col: number;
+  endRow: number;
+  endCol: number;
+  /** 区域里格子的显示文字（格子之间制表符、行之间换行），最多 COMMENT_QUOTE_MAX 字；空格子是空字符串 */
+  quote: string;
+  /** 创建时的工作表名，只给宿主显示用（「Sheet1!B3」） */
+  sheetName?: string;
+}
+
+/** 宿主发来的一条评论：编辑器只要锚点和是否已解决 */
+export interface CommentItem { cid: string; anchor: CommentAnchor; resolved: boolean }
+
+/** 锚点序列化后的上限（字节） */
+export const COMMENT_ANCHOR_MAX = 4096;
+/** 锚点里引用的原文最多多少字 */
+export const COMMENT_QUOTE_MAX = 500;
+/** 文档锚点前后各留多少字的上下文 */
+export const COMMENT_CONTEXT = 32;
+
 /* ---------- postMessage ---------- */
 
 export const EDITOR_SOURCE = 'cai-editor';
@@ -60,7 +115,8 @@ export const HOST_SOURCE = 'cai-host';
 
 /** 编辑器发给宿主 */
 export type EditorToHost =
-  | { type: 'ready'; kind: Kind; title: string; readonly: boolean }
+  /** comments 为 true 表示这种编辑器支持锚在内容上的评论（文档、表格），宿主收到后再发 comments */
+  | { type: 'ready'; kind: Kind; title: string; readonly: boolean; comments?: boolean }
   | { type: 'title'; title: string }
   | { type: 'saving' }
   | { type: 'saved'; version: number; at: string }
@@ -73,7 +129,18 @@ export type EditorToHost =
   | { type: 'request'; what: 'share' | 'ai' | 'history' | 'close' }
   | { type: 'exported'; name: string }
   | { type: 'imported'; title: string }
-  | { type: 'selection'; text: string };
+  | { type: 'selection'; text: string }
+  /** 用户要评论当前选中的内容：宿主打开评论框；发出以后把新评论放进 comments 发回来。quote 和 anchor.quote 相同，方便宿主直接显示 */
+  | { type: 'comment-new'; anchor: CommentAnchor; quote: string }
+  /** 用户点了内容里某条评论的高亮或标记 */
+  | { type: 'comment-open'; cid: string }
+  /** 锚点已经找不到的评论（原文被删了、工作表被删了……），包括已解决的。收到 comments 以后发一次，之后有变化再发（约 1 秒防抖）；没有就是空数组 */
+  | { type: 'comment-orphans'; cids: string[] }
+  /**
+   * 表格：插入、删除行列以后锚点跟着挪了，anchor 是挪过以后的。宿主可以用它更新保存的锚点（要确认对方有编辑权限）；
+   * 不处理也行，只是下次打开时评论回到原来的行列号上。文档的锚点不需要这个，不会发
+   */
+  | { type: 'comment-moved'; cid: string; anchor: CommentAnchor };
 
 /** 宿主发给编辑器 */
 export type HostToEditor =
@@ -88,7 +155,16 @@ export type HostToEditor =
   | { type: 'command'; name: string; args?: unknown }
   | { type: 'focus' }
   /** 宿主让编辑器立刻把没保存的内容写回去（关闭前） */
-  | { type: 'flush' };
+  | { type: 'flush' }
+  /**
+   * 全部评论，整份替换之前的。宿主收到 ready（comments 为 true）以后发一次（没有评论也发空数组，编辑器收到过它才显示「评论」入口），
+   * 之后评论有增删、解决状态变了就再发
+   */
+  | { type: 'comments'; items: CommentItem[] }
+  /** 让某条评论成为当前评论：滚到它的位置、高亮加重（已解决的也会临时显示出来）；cid 为空字符串时取消 */
+  | { type: 'comment-focus'; cid: string }
+  /** 宿主的评论框开着时临时高亮的范围（一般就是 comment-new 里的锚点）；null 清掉 */
+  | { type: 'comment-pending'; anchor: CommentAnchor | null };
 
 export type EditorMessage = EditorToHost & { source: typeof EDITOR_SOURCE; docId: string };
 export type HostMessage = HostToEditor & { source: typeof HOST_SOURCE };

@@ -14,7 +14,12 @@ export interface SessionOptions {
   saveDelay?: number;
   /** 在线心跳间隔，毫秒；0 表示不报在线（文档用协同连接自己报） */
   presenceEvery?: number;
+  /** 这种编辑器支持锚在内容上的评论：在 ready 消息里告诉宿主 */
+  comments?: boolean;
 }
+
+/** 表示「当前状态」的宿主消息：编辑器组件挂上之前就可能到了，会话记下最新的一条，组件挂上后用 s.lastHost(type) 补上 */
+const STATE_MESSAGES = new Set<HostToEditor['type']>(['comments', 'comment-focus', 'comment-pending']);
 
 export interface Snapshot { content: unknown; plain: string; title?: string }
 export type Theme = 'light' | 'dark';
@@ -36,6 +41,7 @@ export class Session {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<void> | null = null;
   private hostHandlers: ((m: HostToEditor) => void)[] = [];
+  private latest = new Map<HostToEditor['type'], HostToEditor>();
   private conflictHandler: ((c: SaveConflict) => void) | null = null;
   private presenceTimer: ReturnType<typeof setInterval> | null = null;
   private editing = false;
@@ -62,6 +68,7 @@ export class Session {
       if (!m || m.source !== HOST_SOURCE) return;
       if (m.type === 'theme') this.applyTheme(m.theme);
       if (m.type === 'flush') void this.flush();
+      if (STATE_MESSAGES.has(m.type)) this.latest.set(m.type, m);
       for (const h of this.hostHandlers) h(m);
     });
     window.addEventListener('beforeunload', () => { void this.flush(true); if (this.presenceTimer) void this.client.presence(false, true); });
@@ -72,7 +79,7 @@ export class Session {
       this.presenceTimer = setInterval(beat, this.opts.presenceEvery ?? 20_000);
     }
     document.title = this.doc.title;
-    this.send({ type: 'ready', kind: this.doc.kind, title: this.doc.title, readonly: this.readonly });
+    this.send({ type: 'ready', kind: this.doc.kind, title: this.doc.title, readonly: this.readonly, ...(this.opts.comments ? { comments: true } : {}) });
     return this.doc;
   }
 
@@ -81,6 +88,8 @@ export class Session {
   /** 发消息给宿主 */
   send(m: EditorToHost) { if (window.parent !== window) window.parent.postMessage({ ...m, source: EDITOR_SOURCE, docId: this.docId }, '*'); }
   onHost(h: (m: HostToEditor) => void) { this.hostHandlers.push(h); return () => { this.hostHandlers = this.hostHandlers.filter((x) => x !== h); }; }
+  /** 宿主最近发来的某种状态消息（comments、comment-focus、comment-pending），没收到过是 undefined */
+  lastHost<T extends HostToEditor['type']>(type: T): Extract<HostToEditor, { type: T }> | undefined { return this.latest.get(type) as Extract<HostToEditor, { type: T }> | undefined; }
   /** 版本冲突时怎么办；不设就提示并刷新页面 */
   onConflict(h: (c: SaveConflict) => void) { this.conflictHandler = h; }
 

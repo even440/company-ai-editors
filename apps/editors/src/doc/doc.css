@@ -50,3 +50,14 @@
   .doc-body { font-size: 12pt; }
   .doc-body a { color: #000; }
 }
+
+/* 评论：高亮全是 decoration，不写进正文；当前评论和评论框开着时的范围颜色更重。编辑时保留文字光标，只读时手形 */
+.doc-body .cmt-hl { background: var(--t-yellow-bg); border-bottom: 2px solid var(--warn); border-radius: 2px; }
+.doc-body .cmt-hl.cmt-on, .doc-body .cmt-hl.cmt-pending { background: var(--warn-line); border-bottom-color: var(--serious); }
+.doc-body[contenteditable='false'] .cmt-hl { cursor: pointer; }
+/* 选中文字后浮出来的「评论」按钮：在正文的滚动容器里绝对定位，跟着内容滚 */
+.ed-body > .cmt-btn { position: absolute; z-index: 5; box-shadow: var(--shadow); }
+@media print {
+  .doc-body .cmt-hl { background: none; border: 0; }
+  .ed-body > .cmt-btn { display: none !important; }
+}
