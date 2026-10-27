@@ -73,7 +73,7 @@ const PH = 'cai-img:';
 /**
  * Word：里面的图片交给宿主保存成附件（得到带令牌的地址），传不上去时退成 data: 地址内嵌；交叉引用先改写成文档内链接（crossRefsToLinks）。
  * 图片先收下、给占位地址，转完再一起传（一样的只传一次、同时传几张，onProgress 报进度），并带上像素宽高（images.ts）。
- * mammoth 的样式映射保持默认：Heading 1-3 → h1-h3，列表、表格、加粗、斜体、链接都能对上。
+ * mammoth 的样式映射保持默认：Heading 1-6 → h1-h6，列表、表格、加粗、斜体、链接都能对上。
  */
 export async function docxToHtml(data: ArrayBuffer, client?: EditorClient, onProgress?: ImageProgress): Promise<string> {
   data = await withCrossRefLinks(data);
@@ -88,7 +88,7 @@ export async function docxToHtml(data: ArrayBuffer, client?: EditorClient, onPro
   return sanitizeHtml(r.value.replace(/cai-img:(\d+)/g, (_, i: string) => srcs[Number(i)] ?? ''));
 }
 
-/** 能挂书签的块（编辑器里标题只有 1–3 级，4–6 级在 liftAnchors 里换成段落） */
+/** 能挂书签的块（标题一到六级，2026-10-27 起编辑器认六级；原来 4–6 级在这里换成段落） */
 const TARGETS = 'h1,h2,h3,h4,h5,h6,p,li';
 /** 一个块最多记几个书签（和 anchors.ts、平台 content.ts 一致） */
 const MAX_PER_BLOCK = 16;
@@ -97,7 +97,7 @@ const MAX_PER_BLOCK = 16;
  * 书签挪到所在的块上（data-anchor，见 anchors.ts）。编辑器的结构里没有空的 <a>，不挪就丢了，目录、交叉引用、脚注点了没处去：
  * Word 的书签 mammoth 转成空的 <a id>；脚注是 <li id> 和带 id 的引用链接；HTML 里还有 <a name> 和块元素的 id。
  * Word 自己用的隐藏书签（_Toc、_Ref、_Hlk 这类下划线开头的）只留有链接指向的；有链接指向、还没有锚点的标题按 GitHub 的写法补上
- * （Markdown 里的 [x](#标题文字)）。4–6 级标题换成段落：解析时本来也会变成段落，先换才留得住书签。
+ * （Markdown 里的 [x](#标题文字)）。
  */
 export function liftAnchors(html: string): string {
   const d = new DOMParser().parseFromString(html, 'text/html'), body = d.body;
@@ -143,11 +143,6 @@ export function liftAnchors(html: string): string {
       const name = linked.get(n ? `${base}-${n}` : base);
       if (name) add(h, name);
     }
-  }
-  for (const h of [...body.querySelectorAll('h4,h5,h6')]) {
-    const p = d.createElement('p'), v = h.getAttribute('data-anchor');
-    if (v) p.setAttribute('data-anchor', v);
-    p.append(...h.childNodes); h.replaceWith(p);
   }
   return body.innerHTML;
 }

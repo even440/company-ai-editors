@@ -15,6 +15,7 @@ import type { Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { toast } from '../shell/ui';
+import { jumpToPos, jumpToTop } from './jump';
 import './anchors.css';
 
 /** 能挂书签的块 */
@@ -64,17 +65,15 @@ const FLASH_MS = 1600;
 /** 第几次跳转：到点只清自己那一次的高亮，连着点两个链接时不把后一次的清掉 */
 let flashSeq = 0;
 
-/** 滚动到书签所在的块；编辑时光标放到那一块的开头。找到了返回 true */
+/** 滚动到书签所在的块（jump.ts：跳过去以后几秒内跟着对准，懒加载的图片不会把它挤走）；编辑时光标放到那一块的开头。找到了返回 true */
 export function jumpTo(view: EditorView, name: string): boolean {
-  const scroller = view.dom.closest('.ed-body') as HTMLElement | null;
-  if (isTop(name)) { (scroller ?? document.scrollingElement)?.scrollTo({ top: 0, behavior: 'smooth' }); return true; }
+  if (isTop(name)) { jumpToTop(view); return true; }
   const hit = findAnchor(view.state.doc, name);
   if (!hit) { toast(`文档里找不到书签「${name}」`); return false; }
   const tr = view.state.tr.setMeta(flashKey, { from: hit.pos, to: hit.pos + hit.node.nodeSize });
   if (view.editable) tr.setSelection(TextSelection.near(view.state.doc.resolve(hit.pos + 1)));
   view.dispatch(tr);
-  const dom = view.nodeDOM(hit.pos);
-  if (dom instanceof HTMLElement) dom.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  jumpToPos(view, hit.pos);
   const seq = ++flashSeq;
   window.setTimeout(() => { if (seq === flashSeq && !view.isDestroyed) view.dispatch(view.state.tr.setMeta(flashKey, 'clear')); }, FLASH_MS);
   return true;

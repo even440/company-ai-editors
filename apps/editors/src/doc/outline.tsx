@@ -3,21 +3,23 @@
  * 按正文里的一到三级标题列出来（只看顶层的块，表格、引用里的标题不算），有下级的能收起、展开；滚动时当前读到的那一节亮着。
  * 宽的时候固定在正文左边，窄的时候（手机、AI 助手右边那块）是左下角一个按钮，点了从左边滑出来、选了就收起。
  * 开着还是关着按人记在本机（localStorage），没设过时宽屏、有三个以上标题才默认打开。
- * 点了跳过去以后几秒内有图片加载出来（懒加载的图没写宽高时会把正文往下挤），重新对准那个标题；自己动了滚动就不再管
+ * 点了跳过去（jump.ts）：跳过去以后几秒内有图片加载出来（懒加载的图没写宽高时会把正文往下挤）就重新对准那个标题，自己动了滚动就不再管。
+ * 标题一到六级（2026-10-27 用户说文档会用到五级、六级标题），按级别缩进
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';
 import { Icon, cx } from '../shell/ui';
+import { jumpToPos } from './jump';
 
 export interface TocItem { pos: number; level: number; text: string; key: string }
 
-/** 正文的目录：顶层的标题。key 由级别、文字和同名的第几个组成，编辑时收起状态不乱 */
+/** 正文的目录：顶层的一到六级标题。key 由级别、文字和同名的第几个组成，编辑时收起状态不乱 */
 export function tocOf(doc: PmNode): TocItem[] {
   const out: TocItem[] = [], seen = new Map<string, number>();
   doc.forEach((node, offset) => {
     if (node.type.name !== 'heading') return;
-    const level = Math.min(3, Math.max(1, Number(node.attrs.level) || 1)), text = node.textContent.replace(/\s+/g, ' ').trim();
+    const level = Math.min(6, Math.max(1, Number(node.attrs.level) || 1)), text = node.textContent.replace(/\s+/g, ' ').trim();
     const base = `${level}:${text}`, n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
     out.push({ pos: offset, level, text, key: `${base}#${n}` });
@@ -74,19 +76,9 @@ function topOf(editor: Editor, box: HTMLElement, pos: number): number | null {
   return dom instanceof HTMLElement ? dom.getBoundingClientRect().top - box.getBoundingClientRect().top : null;
 }
 
-/** 跳到标题：离得远时直接到（一路滑过去会把途中懒加载的图都拉下来），近的平滑滚 */
-function scrollToHeading(editor: Editor, box: HTMLElement, pos: number, smooth: boolean) {
-  const top = topOf(editor, box, pos);
-  if (top === null) return;
-  const far = Math.abs(top) > box.clientHeight * 3;
-  box.scrollTo({ top: box.scrollTop + top - 12, behavior: smooth && !far ? 'smooth' : 'auto' });
-}
-
 export function Outline({ editor, items, box, wide, onClose }: { editor: Editor; items: TocItem[]; box: RefObject<HTMLDivElement | null>; wide: boolean; onClose: () => void }) {
   const [cur, setCur] = useState(-1), [folded, setFolded] = useState<Set<string>>(() => new Set());
   const list = useRef<HTMLDivElement>(null);
-  /** 刚点过的标题：几秒内有图片加载出来就重新对准；本人滚了、点了别处就不管了 */
-  const pin = useRef<{ pos: number; until: number } | null>(null);
 
   // 当前读到哪一节：最后一个顶到容器上边（往下 72 像素以内）的标题；标题按顺序排，二分查找
   useEffect(() => {
@@ -107,25 +99,6 @@ export function Outline({ editor, items, box, wide, onClose }: { editor: Editor;
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { el.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
   }, [editor, box, items]);
-
-  // 跳过去以后图片陆续加载、正文被挤动时重新对准
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const onLoad = (e: Event) => {
-      const p = pin.current;
-      if (!p || !(e.target instanceof HTMLImageElement)) return;
-      if (Date.now() > p.until) { pin.current = null; return; }
-      scrollToHeading(editor, el, p.pos, false);
-    };
-    const drop = () => { pin.current = null; };
-    el.addEventListener('load', onLoad, true);
-    for (const t of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) el.addEventListener(t, drop, { passive: true });
-    return () => {
-      el.removeEventListener('load', onLoad, true);
-      for (const t of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) el.removeEventListener(t, drop);
-    };
-  }, [editor, box]);
 
   // 看得见的项：收起的标题下面的不显示
   const shown = useMemo(() => {
@@ -152,10 +125,7 @@ export function Outline({ editor, items, box, wide, onClose }: { editor: Editor;
   }, [curShown]);
 
   const go = (it: TocItem) => {
-    const el = box.current;
-    if (!el) return;
-    pin.current = { pos: it.pos, until: Date.now() + 4000 };
-    scrollToHeading(editor, el, it.pos, true);
+    if (!editor.isDestroyed) jumpToPos(editor.view, it.pos);
     if (!wide) onClose();
   };
   const toggle = (key: string) => setFolded((f) => { const n = new Set(f); if (n.has(key)) n.delete(key); else n.add(key); return n; });

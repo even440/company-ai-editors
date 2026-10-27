@@ -19,6 +19,11 @@
 /* 正文 */
 .doc-body h1 { font-size: 22px; margin-top: 12px; }
 .doc-body h3 { font-size: 16px; margin-top: 6px; }
+/* 四到六级标题（2026-10-27）：字号接着往下降，五、六级用颜色区分 */
+.doc-body h4, .doc-body h5, .doc-body h6 { margin: 2px 0 0; font-weight: 650; line-height: 1.45; }
+.doc-body h4 { font-size: 15px; margin-top: 4px; }
+.doc-body h5 { font-size: 14px; }
+.doc-body h6 { font-size: 14px; color: var(--ink-2); }
 .doc-body ol { list-style: decimal; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
 .doc-body li > p { display: inline; }
 .doc-body li > p + ul, .doc-body li > p + ol { margin-top: 4px; }
@@ -38,6 +43,8 @@
 /* 图片：块级、最宽到正文宽度；选中时描边 */
 .doc-body img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
 .doc-body img.ProseMirror-selectednode { outline: 2px solid var(--accent-btn); outline-offset: 2px; }
+/* 只读时单击图片看大图（编辑时双击） */
+.doc-body[contenteditable='false'] img { cursor: zoom-in; }
 
 /* 别人的光标和选区（颜色由扩展按人写在行内） */
 .doc-body .collaboration-carets__caret { position: relative; margin-left: -1px; margin-right: -1px; border-left: 1px solid; border-right: 1px solid; word-break: normal; pointer-events: none; }
@@ -76,6 +83,10 @@
 .toc-i { display: flex; align-items: center; border-radius: 6px; }
 .toc-i.l2 { padding-left: 14px; }
 .toc-i.l3 { padding-left: 28px; }
+.toc-i.l4 { padding-left: 40px; }
+.toc-i.l5 { padding-left: 52px; }
+.toc-i.l6 { padding-left: 64px; }
+.toc-i.l4 .toc-t, .toc-i.l5 .toc-t, .toc-i.l6 .toc-t { font-size: 12.5px; }
 .toc-fold { flex: none; width: 18px; height: 22px; padding: 0; border: 0; background: none; color: var(--ink-3); display: grid; place-items: center; cursor: pointer; border-radius: 4px; }
 span.toc-fold { cursor: default; }
 .toc-fold .ic { width: 12px; height: 12px; transition: transform .15s; }

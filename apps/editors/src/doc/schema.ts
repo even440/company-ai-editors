@@ -15,7 +15,7 @@ export const Y_TITLE = 'title';
 
 /** 决定文档结构的扩展。撤销重做关掉：协同模式由 Collaboration 提供，非协同模式在编辑器里再打开 */
 export const schemaExtensions = (): Extensions => [
-  StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: { openOnClick: 'whenNotEditable', autolink: true }, undoRedo: false }),
+  StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] }, link: { openOnClick: 'whenNotEditable', autolink: true }, undoRedo: false }),
   TableKit.configure({ table: { resizable: false } }),
   Image,
   // 书签属性 anchor（标题、段落、列表项），平台那一份也有；顺带点文档内链接时在文档里跳转

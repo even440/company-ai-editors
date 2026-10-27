@@ -140,7 +140,12 @@ export type EditorToHost =
    * 表格：插入、删除行列以后锚点跟着挪了，anchor 是挪过以后的。宿主可以用它更新保存的锚点（要确认对方有编辑权限）；
    * 不处理也行，只是下次打开时评论回到原来的行列号上。文档的锚点不需要这个，不会发
    */
-  | { type: 'comment-moved'; cid: string; anchor: CommentAnchor };
+  | { type: 'comment-moved'; cid: string; anchor: CommentAnchor }
+  /**
+   * 用户要看大图（文档：双击图片，只读时单击也行；2026-10-27 同事反馈知识库、文档里的图片不能双击放大）：images 是这份内容里全部的图片（按出现的顺序），
+   * index 是点的那张。宿主全屏打开看图（缩放、旋转、翻看）；不认的宿主什么都不做
+   */
+  | { type: 'image-view'; images: { src: string; alt?: string }[]; index: number };
 
 /** 宿主发给编辑器 */
 export type HostToEditor =

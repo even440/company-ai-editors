@@ -7,6 +7,7 @@
  * 协同模式 6 秒没同步上、或服务端拒绝时，退成只读视图并提示，可以重试。
  * 评论（comments.ts）：选中文字后点浮出来的「评论」或按 Ctrl/⌘+Alt+M，编辑和只读都能用；评论串本身在宿主那边。
  * 目录（outline.tsx，2026-10-27）：按标题列在正文左边，点了跳过去；窄的时候是左下角的按钮。
+ * 看大图（2026-10-27，同事反馈知识库、文档里的图片不能双击放大）：双击图片（只读时单击也行，触屏上双击），把全文的图片交给宿主全屏看（image-view）。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type RefObject } from 'react';
 import type { Extensions, JSONContent } from '@tiptap/core';
@@ -35,6 +36,7 @@ const OFFLINE_AFTER = 12000;
 /** 选区变化多久报一次给宿主 */
 const SELECTION_EVERY = 300;
 const placeholder = () => Placeholder.configure({ placeholder: '从这里开始写……' });
+const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 const param = (k: string) => new URLSearchParams(location.search).get(k) ?? '';
 
 /** 一条协同连接：Y.Doc、WebSocket 和我在 awareness 里的身份 */
@@ -52,10 +54,10 @@ function setYText(y: Y.Text, v: string) {
 
 /* ---------- 正文 ---------- */
 
-/** 正文编辑器。协同模式绑在 Y.Doc 上（连接变了重新建）；普通模式直接加载内容。extra 是只影响交互的扩展（评论） */
-function Body({ s, ysess, editable, extra, onEditor, onUpdate, onSelection }: { s: Session; ysess: YSession | null; editable: boolean; extra: Extensions; onEditor: (e: Editor | null) => void; onUpdate: (e: Editor) => void; onSelection: (e: Editor) => void }) {
-  const upd = useRef(onUpdate), sel = useRef(onSelection);
-  upd.current = onUpdate; sel.current = onSelection;
+/** 正文编辑器。协同模式绑在 Y.Doc 上（连接变了重新建）；普通模式直接加载内容。extra 是只影响交互的扩展（评论）；onImage 是要看大图（图片节点的位置） */
+function Body({ s, ysess, editable, extra, onEditor, onUpdate, onSelection, onImage }: { s: Session; ysess: YSession | null; editable: boolean; extra: Extensions; onEditor: (e: Editor | null) => void; onUpdate: (e: Editor) => void; onSelection: (e: Editor) => void; onImage: (pos: number) => void }) {
+  const upd = useRef(onUpdate), sel = useRef(onSelection), img = useRef(onImage);
+  upd.current = onUpdate; sel.current = onSelection; img.current = onImage;
   const editor = useEditor({
     extensions: [
       ...schemaExtensions(), placeholder(),
@@ -64,7 +66,12 @@ function Body({ s, ysess, editable, extra, onEditor, onUpdate, onSelection }: { 
     ],
     content: ysess ? undefined : (contentOf(s.doc.content) as JSONContent),
     editable, shouldRerenderOnTransaction: false,
-    editorProps: { attributes: { class: 'doc-body', 'data-id': s.docId } },
+    editorProps: {
+      attributes: { class: 'doc-body', 'data-id': s.docId },
+      // 看大图：双击图片；只读时单击也行（编辑时单击是选中图片，好拖动、删除）
+      handleDoubleClickOn: (_view, _pos, node, nodePos, _event, direct) => { if (!direct || node.type.name !== 'image') return false; img.current(nodePos); return true; },
+      handleClickOn: (view, _pos, node, nodePos, _event, direct) => { if (view.editable || !direct || node.type.name !== 'image') return false; img.current(nodePos); return true; },
+    },
     onUpdate: ({ editor: e }) => upd.current(e),
     onSelectionUpdate: ({ editor: e }) => sel.current(e),
   }, [ysess]);
@@ -79,7 +86,8 @@ function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => voi
   const st = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
-      block: e.isActive('heading', { level: 1 }) ? 'h1' : e.isActive('heading', { level: 2 }) ? 'h2' : e.isActive('heading', { level: 3 }) ? 'h3' : 'p',
+      // 标题一到六级（2026-10-27 用户说文档会用到五级、六级标题）
+      block: ((lv) => (lv ? `h${lv}` : 'p'))(HEADING_LEVELS.find((level) => e.isActive('heading', { level }))),
       bold: e.isActive('bold'), italic: e.isActive('italic'), ul: e.isActive('bulletList'), ol: e.isActive('orderedList'), table: e.isActive('table'), link: e.isActive('link'),
       undo: e.can().undo(), redo: e.can().redo(),
     }),
@@ -90,7 +98,7 @@ function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => voi
       <button type="button" className="tt" onClick={() => c().undo().run()} disabled={!st.undo} title="撤销（Ctrl+Z）"><Icon name="undo" /><span className="lbl">撤销</span></button>
       <button type="button" className="tt" onClick={() => c().redo().run()} disabled={!st.redo} title="重做（Ctrl+Shift+Z）"><Icon name="redo" /><span className="lbl">重做</span></button>
     </>}>
-      <Select aria-label="段落样式" value={st.block} onChange={(v) => (v === 'p' ? c().setParagraph().run() : c().toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 }).run())} options={[['p', '正文'], ['h1', '标题 1'], ['h2', '标题 2'], ['h3', '标题 3']]} />
+      <Select aria-label="段落样式" value={st.block} onChange={(v) => (v === 'p' ? c().setParagraph().run() : c().toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 | 4 | 5 | 6 }).run())} options={[['p', '正文'], ['h1', '标题 1'], ['h2', '标题 2'], ['h3', '标题 3'], ['h4', '标题 4'], ['h5', '标题 5'], ['h6', '标题 6']]} />
       <span className="sep" />
       <button type="button" className={cx('tt b', st.bold && 'on')} onClick={() => c().toggleBold().run()} aria-pressed={st.bold} title="加粗（Ctrl+B）">B</button>
       <button type="button" className={cx('tt i', st.italic && 'on')} onClick={() => c().toggleItalic().run()} aria-pressed={st.italic} title="斜体（Ctrl+I）">I</button>
@@ -293,6 +301,21 @@ export function DocEditor({ session: s }: { session: Session }) {
     }, SELECTION_EVERY);
   }, [s]);
   const onEditor = useCallback((e: Editor | null) => { setEditor(e); cmt.attach(e); if (import.meta.env.DEV) (window as unknown as { __editor?: Editor | null }).__editor = e; }, [cmt]);
+  /** 看大图：全文的图片按出现的顺序交给宿主，at 是点的那张图片节点的位置 */
+  const editorRef = useRef(editor); editorRef.current = editor;
+  const viewImage = useCallback((at: number) => {
+    const e = editorRef.current;
+    if (!e || e.isDestroyed) return;
+    const images: { src: string; alt?: string }[] = [];
+    let index = -1;
+    e.state.doc.descendants((n, pos) => {
+      if (n.type.name !== 'image') return true;
+      const src = typeof n.attrs.src === 'string' ? n.attrs.src : '';
+      if (src) { if (pos === at) index = images.length; images.push({ src, ...(n.attrs.alt ? { alt: String(n.attrs.alt) } : {}) }); }
+      return false;
+    });
+    if (index >= 0) s.send({ type: 'image-view', images, index });
+  }, [s]);
 
   /** 宿主改了标题：协同模式写进 Y.Text，普通模式只记下来 */
   const applyTitle = useCallback((t: string) => {
@@ -376,7 +399,7 @@ export function DocEditor({ session: s }: { session: Session }) {
           <article className="doc">
             {note}
             {busy ? <div className="note ed-note"><span className="spin" /> {busy}</div> : null}
-            {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} extra={cmtExt} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} />
+            {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} extra={cmtExt} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} onImage={viewImage} />
               : <div className="ed-state"><span className="spin" role="status" aria-label={CONN_TEXT[conn]} /></div>}
             {ro && showBody ? <p className="note ed-note">你对这篇文档只有阅读权限{cmtOn ? '，可以选中文字加评论' : ''}。</p> : null}
           </article>
