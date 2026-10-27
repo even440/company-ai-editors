@@ -8,6 +8,7 @@
 - `schema.ts`：节点集合 `schemaExtensions()`、`Y_FIELD`（正文所在的 Y.XmlFragment 名 `default`）、`Y_TITLE`（标题所在的 Y.Text 名 `title`）。从平台复制，多加了 `image` 节点。**平台服务端的协同服务和 `cleanDoc` 白名单也要认识 `image`，否则协同转换或保存时图片会被丢掉。**
 - `image.ts`：最简单的图片节点（块级、`src` / `alt` / `title` / `width` / `height`），starter-kit 3 没有图片节点，又不想多装包。宽高是图片的像素大小：浏览器在懒加载的图片出来之前按比例留好位置。
 - `images.ts`：导入 Word 时的图片：去重、同时传、读像素宽高（见「导入」）。
+- `textstyle.ts`、`liststyle.ts`、`format.tsx`：格式（见「格式」）：文字的字体、字号、颜色、底纹和段落对齐；列表、编号的样式；工具栏上的这几个按钮。
 - `outline.tsx`：目录（见「目录」）。
 - `jump.ts`：跳到正文里的某一块（目录、书签和文档内链接共用，见「目录」）。
 - `content.ts`：拼结构的小函数、`contentOf`（空内容 `{}` → 空白文档）、`plainOf`（纯文本）、`paragraphsOf`（文字按行成段落）。和平台 `content.ts` 里的同名函数一致。
@@ -18,7 +19,7 @@
 
 ## 内容格式
 
-`content` 是 Tiptap JSON：`{ type: 'doc', content: [...] }`。节点：`paragraph`、`heading`（level 1-3）、`bulletList` / `orderedList` / `listItem`、`blockquote`、`codeBlock`、`horizontalRule`、`hardBreak`、`table` / `tableRow` / `tableHeader` / `tableCell`、`image`（`attrs.src` 是宿主上传接口返回的带令牌地址）、`text`。样式：`bold`、`italic`、`strike`、`code`、`underline`、`link`。
+`content` 是 Tiptap JSON：`{ type: 'doc', content: [...] }`。节点：`paragraph`、`heading`（level 1-6）、`bulletList` / `orderedList` / `listItem`、`blockquote`、`codeBlock`、`horizontalRule`、`hardBreak`、`table` / `tableRow` / `tableHeader` / `tableCell`、`image`（`attrs.src` 是宿主上传接口返回的带令牌地址）、`text`。样式：`bold`、`italic`、`strike`、`code`、`underline`、`link`、`textStyle`（颜色、底纹、字体、字号）。属性：标题和段落的 `textAlign`，列表的 `listStyle`，单元格的 `colwidth`（拖过的列宽，像素），见「格式」。
 
 `plain` 是 `plainOf(content)`：段落、标题、列表项每个一行，表格一行一行、单元格之间用竖线隔开。
 
@@ -34,12 +35,14 @@
 
 协同模式 6 秒没同步上（`failed`）或服务端拒绝（`denied`，关闭码 4400-4499）时，用打开时拿到的 `s.doc.content` 显示**只读**视图并提示，可以点「重试」。离线（断开 12 秒以上）时还能继续写，重连后自动合并。
 
-y-websocket 的 `WebsocketProvider(serverUrl, roomname, doc, { params })`：`serverUrl` 是 `s.wsUrl()` 去掉 `/ws/collab/<编号>?token=…` 之后再接 `/ws/collab`，`roomname` 是文档编号，`params: { token }` 会拼到地址上。
+y-websocket 的 `WebsocketProvider(serverUrl, roomname, doc, { params })`：`serverUrl` 是 `s.wsUrl()` 去掉 `/ws/collab/<编号>?token=…` 之后再接 `/ws/collab`，`roomname` 是文档编号，`params: { token, v }` 会拼到地址上。
+
+`v` 是这个编辑器认得的文档结构版本（`DocEditor.tsx` 的 `COLLAB_V`，平台 `src/server/modules/docs/collab.ts` 的 `COLLAB_V` 跟着改）：现在用的 y-tiptap 3.0.9 遇到不认识的样式（mark）会把整段文字从协同文档里删掉，所以结构里加新的样式时两边一起加一，发布时还开着的旧页面连协同会被关闭码 4426 拒绝，显示「编辑器已更新，请刷新页面」。新加属性（attrs）旧页面只是不认、编辑那一块时会丢掉，也算在内一起加。2：格式（2026-10-27）。
 
 ## 宿主消息
 
 - `insert`：`text` 按行成段落、或 `html`，插到文末。只读时提示。
-- `export`：`docx`（标题、段落、列表、引用、代码块、表格、图片、加粗 / 斜体 / 删除线 / 代码 / 链接）、`md`、`pdf`（`window.print()`，打印样式只打印正文）。
+- `export`：`docx`（标题、段落、列表、引用、代码块、表格、图片、加粗 / 斜体 / 删除线 / 代码 / 链接，以及「格式」里的对齐、字体字号颜色底纹、列表样式、列宽）、`md`、`pdf`（`window.print()`，打印样式只打印正文）。
 - `readonly`：切换 `editable`，工具栏跟着显示或隐藏。
 - `title`：见上表。
 - `focus`：光标回到正文。
@@ -78,8 +81,23 @@ y-websocket 的 `WebsocketProvider(serverUrl, roomname, doc, { params })`：`ser
 - **高亮**：未解决的评论黄色底加下划线（`.cmt-hl`，带 `data-cid`），当前评论（`comment-focus`，或刚点过的）和评论框开着时的范围（`comment-pending`）颜色更重；`comment-focus` 指向已解决的评论时也临时显示，并滚到它（不滚宿主页面）。打印时不显示。点高亮发 `comment-open`，几条重叠时取最短的那条；拖选文字松手不算点击。
 - **限制**：按文字找回依赖原文还在，被大段改写又重建过 Y.Doc 的评论会报找不到；一段文字被剪切粘贴到别处，协同模式下算原文被删。
 
+## 格式
+
+2026-10-27 深圳同事反馈：没有常用的对齐方式，改不了字体、字号、字的颜色，不能给文字加底纹；列表只有圆点、编号只有 1. 2. 3.；表格的竖线拖不动。
+
+- **文字**（`textstyle.ts`）：Tiptap 的 `TextStyle`（`<span style>`）加 `Color`、`BackgroundColor`、`FontFamily`、`FontSize` 四个属性，命令就是它们自带的 `setColor` / `unsetColor` 这些。工具栏里的字体（`FONTS`：微软雅黑、宋体、黑体、楷体、仿宋、Arial、Times New Roman、Courier New，值是 CSS 的 font-family，前面是 Windows 的字体、后面退到 Mac 上相近的）、字号（`SIZES`，磅，和 Word 一样，括号里是中文字号）、文字颜色和底纹各 7 种（`TEXT_COLORS` 选的是白底和深色底上都看得清的，`BG_COLORS` 偏浅）。
+- **粘贴进来的样式**只留看得出是特意设的：彩色、不太深也不太浅的字（黑、白、灰多半是原网页的默认颜色，深色模式下会看不见；Word 的「深蓝」这种很深的也不留），偏浅的彩色底纹（白底、灰底、深色底不留；Word 的高亮写成 `background` 简写也认），`FONTS` 里认得的字体（Word 里常写中文名，换成 `FONTS` 的写法），pt / px 的字号（6～96 磅）。颜色统一存成 `#RRGGBB`。没有这几种样式的 `<span>`（Word 的 `mso-*`）不建空样式。
+- **对齐**：`TextAlign`，标题和段落的 `textAlign`（center / right / justify；左对齐是默认，选它就是去掉）。快捷键 Ctrl+Shift+L / E / R / J（Mac 上 ⌘⇧）。
+- **列表、编号的样式**（`liststyle.ts`）：列表节点的 `listStyle`，页面上是 `list-style-type`：项目符号 circle、square（默认实心圆），编号 lower-alpha、upper-alpha、lower-roman、upper-roman、cjk-ideographic（默认 1. 2. 3.）。`setListStyle(type, style)` 改光标所在的最里面那层；工具栏「列表」「编号」旁边的小三角选，还不是这种列表时先变过去。
+- **表格列宽**：`TableKit` 开了 `resizable`，鼠标靠近竖线出现蓝线，拖动改的是这一列每个格子的 `colwidth`。行高跟着内容走，拖不了。
+- **深色模式**（`doc.css`）：有底纹、没设文字颜色的字换成深色；设了颜色、没有底纹的字调亮一些。
+- **导出 Word**（`export.ts`）：对齐写成段落的对齐，颜色、底纹（字符底纹）、字号（半磅）、字体（第一个名字）写到每段文字上；列表每种（样式、起始号）一份编号定义，每个编号列表一个实例，各自从 1（或起始号）编（以前所有编号列表接着编号）；拖过列宽的表格按那个宽度、固定列宽（太宽时按 A4 正文宽度缩），没拖过的铺满；合并的行也带上。Markdown 表示不了这些，照旧只有文字。
+- 平台那一份（`src/features/docs/schema.ts`）有同样的样式和属性，服务端做协同转换时才不丢；`content.ts` 的 `cleanDoc` 再按格式清洗一遍（这些值会写进页面的 style 属性）。
+
 ## 工具栏
 
-段落样式、加粗、斜体、列表、编号、表格（插入；在表格里时加行、加列、删行、删列、删除表格）、图片（选文件 → `s.client.upload` → 插入）、链接（有选中文字就加链接，没有就把地址插进去；已是链接时可以去掉）、撤销、重做。只读时不显示工具栏。
+段落样式、字体、字号、加粗、斜体、文字颜色、底纹、对齐、列表、编号（旁边的小三角选样式）、表格（插入；在表格里时加行、加列、删行、删列、删除表格）、图片（选文件 → `s.client.upload` → 插入）、链接（有选中文字就加链接，没有就把地址插进去；已是链接时可以去掉）、撤销、重做。只读时不显示工具栏。按钮多，宽度不到 1120 像素时按钮上只留图标（鼠标停上去有说明），再窄就换行。
+
+颜色、底纹、对齐和列表样式是按钮加弹出的面板（`format.tsx` 的 `Drop`）：面板挂在按钮下面（右边放不下时贴着按钮右边），点外面、按 Esc、切到别的窗口时收起；按下按钮和面板时不抢正文的焦点，选中的文字一直显示着。工具栏的层级压在正文里的浮动按钮（目录、评论）上面，面板才不被挡。
 
 开发时（`import.meta.env.DEV`）`window.__editor` 是当前的 Tiptap 实例，截图脚本和调试用。

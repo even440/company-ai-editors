@@ -8,6 +8,7 @@
  * 评论（comments.ts）：选中文字后点浮出来的「评论」或按 Ctrl/⌘+Alt+M，编辑和只读都能用；评论串本身在宿主那边。
  * 目录（outline.tsx，2026-10-27）：按标题列在正文左边，点了跳过去；窄的时候是左下角的按钮。
  * 看大图（2026-10-27，同事反馈知识库、文档里的图片不能双击放大）：双击图片（只读时单击也行，触屏上双击），把全文的图片交给宿主全屏看（image-view）。
+ * 格式（format.tsx，2026-10-27）：字体、字号、文字颜色、底纹、对齐，列表和编号的样式；表格拖竖线调列宽（schema.ts）。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type RefObject } from 'react';
 import type { Extensions, JSONContent } from '@tiptap/core';
@@ -23,6 +24,7 @@ import { Field, Icon, Modal, Select, Toaster, Toolbar, cx, toast } from '../shel
 import { DocComments } from './comments';
 import { contentOf, paragraphsOf, plainOf, type DocNode } from './content';
 import { toDocx, toMarkdown } from './export';
+import { AlignPick, ColorPick, FontPick, ListPick, SizePick } from './format';
 import { importToHtml, titleOf } from './import';
 import { Outline, TOC_WIDE, TocButton, useToc, useTocOpen, useWide } from './outline';
 import { Y_FIELD, Y_TITLE, schemaExtensions } from './schema';
@@ -35,6 +37,12 @@ const CONNECT_TIMEOUT = 6000;
 const OFFLINE_AFTER = 12000;
 /** 选区变化多久报一次给宿主 */
 const SELECTION_EVERY = 300;
+/**
+ * 协同时告诉服务端这个编辑器认得哪一版的文档结构（地址参数 v）。结构里加了新的样式时加一，平台 src/server/modules/docs/collab.ts 的 COLLAB_V 跟着改：
+ * 旧版的编辑器遇到不认识的样式会把那一段文字删掉，所以发布以后还开着的旧页面连不上协同，提示刷新。
+ * 2：字体、字号、颜色、底纹、对齐、列表样式（2026-10-27）
+ */
+const COLLAB_V = '2';
 const placeholder = () => Placeholder.configure({ placeholder: '从这里开始写……' });
 const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 const param = (k: string) => new URLSearchParams(location.search).get(k) ?? '';
@@ -98,13 +106,26 @@ function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => voi
       <button type="button" className="tt" onClick={() => c().undo().run()} disabled={!st.undo} title="撤销（Ctrl+Z）"><Icon name="undo" /><span className="lbl">撤销</span></button>
       <button type="button" className="tt" onClick={() => c().redo().run()} disabled={!st.redo} title="重做（Ctrl+Shift+Z）"><Icon name="redo" /><span className="lbl">重做</span></button>
     </>}>
-      <Select aria-label="段落样式" value={st.block} onChange={(v) => (v === 'p' ? c().setParagraph().run() : c().toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 | 4 | 5 | 6 }).run())} options={[['p', '正文'], ['h1', '标题 1'], ['h2', '标题 2'], ['h3', '标题 3'], ['h4', '标题 4'], ['h5', '标题 5'], ['h6', '标题 6']]} />
+      <Select aria-label="段落样式" title="段落样式" value={st.block} onChange={(v) => (v === 'p' ? c().setParagraph().run() : c().toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 | 4 | 5 | 6 }).run())} options={[['p', '正文'], ['h1', '标题 1'], ['h2', '标题 2'], ['h3', '标题 3'], ['h4', '标题 4'], ['h5', '标题 5'], ['h6', '标题 6']]} />
+      <FontPick editor={editor} />
+      <SizePick editor={editor} />
       <span className="sep" />
       <button type="button" className={cx('tt b', st.bold && 'on')} onClick={() => c().toggleBold().run()} aria-pressed={st.bold} title="加粗（Ctrl+B）">B</button>
       <button type="button" className={cx('tt i', st.italic && 'on')} onClick={() => c().toggleItalic().run()} aria-pressed={st.italic} title="斜体（Ctrl+I）">I</button>
+      <ColorPick editor={editor} kind="color" />
+      <ColorPick editor={editor} kind="bg" />
       <span className="sep" />
-      <button type="button" className={cx('tt', st.ul && 'on')} onClick={() => c().toggleBulletList().run()} aria-pressed={st.ul}><Icon name="list" /><span className="lbl">列表</span></button>
-      <button type="button" className={cx('tt', st.ol && 'on')} onClick={() => c().toggleOrderedList().run()} aria-pressed={st.ol}><Icon name="ol" /><span className="lbl">编号</span></button>
+      <AlignPick editor={editor} />
+      <span className="sep" />
+      {/* 列表、编号：按钮本身是开关，旁边的小三角选样式 */}
+      <span className="fmt-split">
+        <button type="button" className={cx('tt', st.ul && 'on')} onClick={() => c().toggleBulletList().run()} aria-pressed={st.ul} title="列表"><Icon name="list" /><span className="lbl">列表</span></button>
+        <ListPick editor={editor} type="bulletList" />
+      </span>
+      <span className="fmt-split">
+        <button type="button" className={cx('tt', st.ol && 'on')} onClick={() => c().toggleOrderedList().run()} aria-pressed={st.ol} title="编号"><Icon name="ol" /><span className="lbl">编号</span></button>
+        <ListPick editor={editor} type="orderedList" />
+      </span>
       <span className="sep" />
       {st.table ? <>
         <button type="button" className="tt" onClick={() => c().addRowAfter().run()} title="在下面加一行">加行</button>
@@ -112,9 +133,9 @@ function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => voi
         <button type="button" className="tt" onClick={() => c().deleteRow().run()} title="删除这一行">删行</button>
         <button type="button" className="tt" onClick={() => c().deleteColumn().run()} title="删除这一列">删列</button>
         <button type="button" className="tt" onClick={() => c().deleteTable().run()}>删除表格</button>
-      </> : <button type="button" className="tt" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><Icon name="grid" /><span className="lbl">表格</span></button>}
-      <button type="button" className="tt" onClick={onImage}><Icon name="image" /><span className="lbl">图片</span></button>
-      <button type="button" className={cx('tt', st.link && 'on')} onClick={onLink} aria-pressed={st.link}><Icon name="link" /><span className="lbl">链接</span></button>
+      </> : <button type="button" className="tt" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="插入表格（插入后拖竖线调列宽）"><Icon name="grid" /><span className="lbl">表格</span></button>}
+      <button type="button" className="tt" onClick={onImage} title="插入图片"><Icon name="image" /><span className="lbl">图片</span></button>
+      <button type="button" className={cx('tt', st.link && 'on')} onClick={onLink} aria-pressed={st.link} title="链接"><Icon name="link" /><span className="lbl">链接</span></button>
     </Toolbar>
   );
 }
@@ -240,7 +261,7 @@ export function DocEditor({ session: s }: { session: Session }) {
     const doc = new Y.Doc();
     // s.wsUrl() 是 ws(s)://宿主/ws/collab/<编号>?token=…；y-websocket 自己拼房间名和参数，这里只要前面那段
     const base = s.wsUrl().replace(/\/ws\/collab\/.*$/, '/ws/collab');
-    const provider = new WebsocketProvider(base, s.docId, doc, { params: { token: s.token }, disableBc: true, maxBackoffTime: 5000 });
+    const provider = new WebsocketProvider(base, s.docId, doc, { params: { token: s.token, v: COLLAB_V }, disableBc: true, maxBackoffTime: 5000 });
     const sess: YSession = { doc, provider, user: { id: s.doc.user.id, name: s.doc.user.name, color: s.doc.user.color } };
     let everSynced = false, offlineTimer: number | undefined;
     const failTimer = window.setTimeout(() => { if (!everSynced) setConn((c) => (c === 'denied' ? c : 'failed')); }, CONNECT_TIMEOUT);

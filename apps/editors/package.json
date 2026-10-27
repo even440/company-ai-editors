@@ -25,6 +25,8 @@
     "@tiptap/extension-collaboration": "^3.31.4",
     "@tiptap/extension-collaboration-caret": "^3.31.4",
     "@tiptap/extension-table": "^3.31.4",
+    "@tiptap/extension-text-align": "^3.31.4",
+    "@tiptap/extension-text-style": "^3.31.4",
     "@tiptap/extensions": "^3.31.4",
     "@tiptap/pm": "^3.31.4",
     "@tiptap/react": "^3.31.4",

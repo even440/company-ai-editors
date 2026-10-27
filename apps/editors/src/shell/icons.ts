@@ -52,5 +52,9 @@ check: '<path d="M3.5 8.5l3 3 6-7"/>', x: '<path d="M4 4l8 8M12 4l-8 8"/>', paus
     star: '<path d="M8 2.2l1.8 3.8 4.1.5-3 2.9.8 4.1L8 11.5l-3.7 2 .8-4.1-3-2.9 4.1-.5L8 2.2z"/>', inbox: '<path d="M2.5 9l1.8-5.5h7.4L13.5 9v4h-11V9zM2.5 9h3.3l.7 1.5h3l.7-1.5h3.3"/>',
     trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.2 4.5l.6 8.5h6.4l.6-8.5M6.7 7v4M9.3 7v4"/>', forward: '<path d="M9.5 4L13 7.5 9.5 11M13 7.5H7a4 4 0 00-4 4v.5"/>',
     replyall: '<path d="M5.5 4.5L2.5 7.5l3 3M8.5 4L5 7.5 8.5 11M5 7.5h5a3.5 3.5 0 013.5 3.5v.5"/>', archive: '<rect x="2.5" y="3" width="11" height="3" rx="1"/><path d="M3.5 6v7h9V6M6.5 9h3"/>', unread: '<path d="M9.5 3.5h-7V11H4v2.5L7 11h6.5V7.5"/><circle cx="12.5" cy="3.8" r="1.6"/>',
-    undo: '<path d="M6 3.5L2.5 7 6 10.5M2.5 7h7a4 4 0 010 8H6"/>', redo: '<path d="M10 3.5L13.5 7 10 10.5M13.5 7h-7a4 4 0 000 8h3.5"/>', italic: '<path d="M9.5 3h3M3.5 13h3M10 3l-4 10"/>', ol: '<path d="M6 4.5h7M6 8h7M6 11.5h7M2.5 3.5h1v2M2.5 7h1.5l-1.5 2h1.5M2.5 10.5h1.5v2h-1.5"/>'
+    undo: '<path d="M6 3.5L2.5 7 6 10.5M2.5 7h7a4 4 0 010 8H6"/>', redo: '<path d="M10 3.5L13.5 7 10 10.5M13.5 7h-7a4 4 0 000 8h3.5"/>', italic: '<path d="M9.5 3h3M3.5 13h3M10 3l-4 10"/>', ol: '<path d="M6 4.5h7M6 8h7M6 11.5h7M2.5 3.5h1v2M2.5 7h1.5l-1.5 2h1.5M2.5 10.5h1.5v2h-1.5"/>',
+    // 文档工具栏：对齐、底纹（2026-10-27）
+    alignleft: '<path d="M2.5 3.5h11M2.5 6.5h7M2.5 9.5h11M2.5 12.5h7"/>', aligncenter: '<path d="M2.5 3.5h11M4.5 6.5h7M2.5 9.5h11M4.5 12.5h7"/>',
+    alignright: '<path d="M2.5 3.5h11M6.5 6.5h7M2.5 9.5h11M6.5 12.5h7"/>', alignjustify: '<path d="M2.5 3.5h11M2.5 6.5h11M2.5 9.5h11M2.5 12.5h11"/>',
+    marker: '<path d="M10 2.5l3.5 3.5-5.5 5.5H4.5V8L10 2.5zM4.5 11.5l-2 2"/>'
 };
