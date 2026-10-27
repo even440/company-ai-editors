@@ -8,7 +8,9 @@
 .ed > .dtool .select { height: 28px; padding: 0 8px; font-size: 13px; }
 @media (max-width: 600px) { .ed > .dtool { padding: 6px 8px; gap: 4px; } .ed > .dtool .tt .lbl { display: none; } }
 
-/* 编辑器外壳里的文档页：铺满高度，提示条在正文上面 */
+/* 编辑器外壳里的文档页：铺满高度，提示条在正文上面；正文和左边的目录（outline.tsx）并排 */
+.ed-row { flex: 1; min-height: 0; display: flex; position: relative; }
+.ed-row > .ed-body { min-width: 0; }
 .ed-body > .doc { min-height: 100%; }
 .ed-note { margin-bottom: 4px; }
 .ed-note.row { display: flex; align-items: center; gap: 8px; }
@@ -61,3 +63,31 @@
   .doc-body .cmt-hl { background: none; border: 0; }
   .ed-body > .cmt-btn { display: none !important; }
 }
+
+/* 目录（outline.tsx）：宽的时候固定在正文左边、自己滚；窄的时候从左边滑出来，盖住正文、点外面收起 */
+.doc-toc { flex: none; width: 260px; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: 1px solid var(--line); }
+.doc-toc.slide { position: absolute; z-index: 21; inset: 0 auto 0 0; width: min(300px, 86%); box-shadow: var(--shadow); border-right: 0; }
+.toc-veil { position: absolute; inset: 0; z-index: 20; background: rgba(15, 18, 24, .28); }
+.toc-head { flex: none; display: flex; align-items: center; gap: 2px; padding: 8px 6px 6px 14px; border-bottom: 1px solid var(--line); }
+.toc-head b { flex: 1; font-size: 13px; }
+.toc-head .tt { height: 26px; padding: 0 6px; font-size: 12px; color: var(--ink-2); }
+.toc-head .toc-x { padding: 0 5px; }
+.toc-list { flex: 1; min-height: 0; overflow: auto; padding: 6px 6px 24px; display: flex; flex-direction: column; gap: 1px; }
+.toc-i { display: flex; align-items: center; border-radius: 6px; }
+.toc-i.l2 { padding-left: 14px; }
+.toc-i.l3 { padding-left: 28px; }
+.toc-fold { flex: none; width: 18px; height: 22px; padding: 0; border: 0; background: none; color: var(--ink-3); display: grid; place-items: center; cursor: pointer; border-radius: 4px; }
+span.toc-fold { cursor: default; }
+.toc-fold .ic { width: 12px; height: 12px; transition: transform .15s; }
+.toc-fold.shut .ic { transform: rotate(-90deg); }
+.toc-fold:hover { color: var(--ink); }
+.toc-t { flex: 1; min-width: 0; padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--ink-2); font: inherit; font-size: 13px; line-height: 1.45; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.toc-i.l1 .toc-t { color: var(--ink); font-weight: 600; }
+.toc-t:hover { background: var(--surface-2); }
+.toc-i.on .toc-t { background: var(--accent-soft); color: var(--info-ink); }
+/* 目录关着时的按钮：宽屏在左上角（正文居中，左边有空），窄屏是左下角的圆按钮 */
+.toc-btn { position: absolute; z-index: 6; top: 10px; left: 12px; box-shadow: var(--shadow-sm); }
+.toc-btn.fab { top: auto; bottom: 16px; width: 40px; height: 40px; padding: 0; border-radius: 50%; justify-content: center; box-shadow: var(--shadow); }
+@media (pointer: coarse) { .toc-t { padding: 8px 6px; } .toc-fold { width: 28px; height: 32px; } }
+@media (prefers-reduced-motion: reduce) { .toc-fold .ic { transition: none; } }
+@media print { .doc-toc, .toc-veil, .toc-btn { display: none !important; } .ed-row { display: block; height: auto; } }

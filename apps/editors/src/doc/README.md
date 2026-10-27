@@ -6,7 +6,9 @@
 
 - `DocEditor.tsx`：页面。协同连接、工具栏、链接弹窗、图片上传、导入、宿主消息。
 - `schema.ts`：节点集合 `schemaExtensions()`、`Y_FIELD`（正文所在的 Y.XmlFragment 名 `default`）、`Y_TITLE`（标题所在的 Y.Text 名 `title`）。从平台复制，多加了 `image` 节点。**平台服务端的协同服务和 `cleanDoc` 白名单也要认识 `image`，否则协同转换或保存时图片会被丢掉。**
-- `image.ts`：最简单的图片节点（块级、`src` / `alt` / `title` / `width`），starter-kit 3 没有图片节点，又不想多装包。
+- `image.ts`：最简单的图片节点（块级、`src` / `alt` / `title` / `width` / `height`），starter-kit 3 没有图片节点，又不想多装包。宽高是图片的像素大小：浏览器在懒加载的图片出来之前按比例留好位置。
+- `images.ts`：导入 Word 时的图片：去重、同时传、读像素宽高（见「导入」）。
+- `outline.tsx`：目录（见「目录」）。
 - `content.ts`：拼结构的小函数、`contentOf`（空内容 `{}` → 空白文档）、`plainOf`（纯文本）、`paragraphsOf`（文字按行成段落）。和平台 `content.ts` 里的同名函数一致。
 - `export.ts`：`toDocx`（docx 库）、`toMarkdown`。
 - `import.ts`：docx（mammoth）、md（marked）、txt、html → HTML，再由 `editor.commands.setContent(html)` 解析；`sanitizeHtml` 去掉脚本和事件属性。
@@ -49,6 +51,16 @@ y-websocket 的 `WebsocketProvider(serverUrl, roomname, doc, { params })`：`ser
 ## 导入
 
 `s.doc.importFile` 有值时下载它，按扩展名转成 HTML → `setContent` → 保存（普通模式 `flush`；协同模式写进 Y.Doc 由服务端保存）→ `s.client.imported()` → `imported` 消息（标题去掉扩展名）。Word 里的图片交给 `s.client.upload` 存成附件，传不上去时内嵌成 data: 地址。协同模式会等连上以后再导入，内容才会进 Y.Doc。
+
+图片（`images.ts`，2026-10-27：深圳同事导入一份 656 张图、64 MB 的操作手册，图片在 mammoth 转换时一张张排队经美国的服务器传，等了 4 分钟）：mammoth 转换时只收下图片、给占位地址 `cai-img:<序号>`，转完再一起交给宿主——内容一样的（SHA-256）只传一次、同时传 8 张，页面上显示「正在导入 xxx：处理图片 n / 总数」；从文件头读出像素宽高（PNG、JPEG、GIF、WebP）写进 `<img>`。mammoth 的 `readAsArrayBuffer()` 给的其实是 `Uint8Array`，`convertImage` 里抛错时 mammoth 会悄悄丢掉那张图，所以读宽高的地方出错只当没有宽高。`s.client.upload` 先试直传对象存储（`packages/bridge` 的 `EditorClient.upload`：宿主的 `POST /uploads` 给签名地址，浏览器直接 PUT 到桶里，再 `/uploads/<id>/complete` 登记；没配对象存储时交给 `/uploads/<id>/local`），宿主不认、文件不小于 32 MB、PUT 不上去、服务端出错时退回 `/asset`。
+
+## 目录
+
+`outline.tsx`（2026-10-27，深圳同事的操作手册很长，要能读出目录、点了跳过去，照 Word / WPS 左边的导航窗格）：按正文顶层的一到三级标题列出来，有下级的能收起、展开，头上有「全部收起」「全部展开」；滚动时当前读到的那一节亮着（二分查找标题离滚动容器顶上的距离），当前项不在视野里时只滚目录自己。
+- 编辑器外壳宽到 880 像素（`TOC_WIDE`）时固定在正文左边，窄的时候（手机、AI 助手右边那块、文档页开着 AI 面板）是左下角的圆按钮，点了从左边滑出来、选了就收起。
+- 开着还是关着按人记在本机（`localStorage` 的 `cai-doc-toc`），没设过时宽屏、有三个以上标题才默认打开；没有标题时不出按钮。
+- 点了跳过去：离得远直接到（一路滑过去会把途中懒加载的图都拉下来），近的平滑滚；之后 4 秒内有图片加载出来（没写宽高的老图会把正文往下挤）就重新对准，本人滚动、点击、按键以后不再管。
+- 目录在 `.ed-row` 里和 `.ed-body` 并排，评论按钮（`.ed-body > .cmt-btn`）和高亮照旧按 `.ed-body` 定位。打印时不显示。
 
 ## 评论
 

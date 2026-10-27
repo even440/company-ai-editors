@@ -6,6 +6,7 @@
  * - 普通（地址参数 collab=0）：直接加载 s.doc.content，改动后 markDirty 走会话的自动保存。
  * 协同模式 6 秒没同步上、或服务端拒绝时，退成只读视图并提示，可以重试。
  * 评论（comments.ts）：选中文字后点浮出来的「评论」或按 Ctrl/⌘+Alt+M，编辑和只读都能用；评论串本身在宿主那边。
+ * 目录（outline.tsx，2026-10-27）：按标题列在正文左边，点了跳过去；窄的时候是左下角的按钮。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type RefObject } from 'react';
 import type { Extensions, JSONContent } from '@tiptap/core';
@@ -22,6 +23,7 @@ import { DocComments } from './comments';
 import { contentOf, paragraphsOf, plainOf, type DocNode } from './content';
 import { toDocx, toMarkdown } from './export';
 import { importToHtml, titleOf } from './import';
+import { Outline, TOC_WIDE, TocButton, useToc, useTocOpen, useWide } from './outline';
 import { Y_FIELD, Y_TITLE, schemaExtensions } from './schema';
 import './doc.css';
 
@@ -195,6 +197,9 @@ export function DocEditor({ session: s }: { session: Session }) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [link, setLink] = useState(false), [busy, setBusy] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null), bodyBox = useRef<HTMLDivElement>(null);
+  // 目录：标题跟着正文变；宽屏固定在左边，窄的时候从左边滑出来
+  const toc = useToc(editor), tocWide = useWide(TOC_WIDE);
+  const [tocOpen, setTocOpen] = useTocOpen(toc.length, tocWide);
 
   // 评论：控制器和扩展一个编辑器页面一份，编辑器因为连接变化重建时沿用；宿主发过 comments 才显示入口
   const cmt = useMemo(() => new DocComments((m) => s.send(m)), [s]);
@@ -306,7 +311,8 @@ export function DocEditor({ session: s }: { session: Session }) {
       try {
         const res = await fetch(f.url || s.client.assetUrl(f.id));
         if (!res.ok) throw new Error(`下载源文件失败（${res.status}）`);
-        const html = await importToHtml(f, await res.arrayBuffer(), s.client);
+        // 几百张图的 Word 要传一会儿：报到第几张了（images.ts）
+        const html = await importToHtml(f, await res.arrayBuffer(), s.client, (done, total) => { if (total) setBusy(`正在导入 ${f.name}：处理图片 ${done} / ${total}`); });
         editor.commands.setContent(html, { emitUpdate: true });
         const title = titleOf(s.doc.title, f.name);
         if (collab) applyTitle(title);
@@ -364,15 +370,19 @@ export function DocEditor({ session: s }: { session: Session }) {
   return (
     <div className="ed" style={{ colorScheme: theme }} data-collab={collab ? conn : 'off'}>
       {editable && editor ? <Tools editor={editor} onImage={() => fileInput.current?.click()} onLink={() => setLink(true)} /> : null}
-      <div className="ed-body" ref={bodyBox}>
-        <article className="doc">
-          {note}
-          {busy ? <div className="note ed-note"><span className="spin" /> {busy}</div> : null}
-          {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} extra={cmtExt} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} />
-            : <div className="ed-state"><span className="spin" role="status" aria-label={CONN_TEXT[conn]} /></div>}
-          {ro && showBody ? <p className="note ed-note">你对这篇文档只有阅读权限{cmtOn ? '，可以选中文字加评论' : ''}。</p> : null}
-        </article>
-        {cmtOn && editor && showBody ? <CommentButton editor={editor} box={bodyBox} made={made} onComment={comment} /> : null}
+      <div className="ed-row">
+        {showBody && editor && tocOpen ? <Outline editor={editor} items={toc} box={bodyBox} wide={tocWide} onClose={() => setTocOpen(false)} /> : null}
+        <div className="ed-body" ref={bodyBox}>
+          <article className="doc">
+            {note}
+            {busy ? <div className="note ed-note"><span className="spin" /> {busy}</div> : null}
+            {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} extra={cmtExt} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} />
+              : <div className="ed-state"><span className="spin" role="status" aria-label={CONN_TEXT[conn]} /></div>}
+            {ro && showBody ? <p className="note ed-note">你对这篇文档只有阅读权限{cmtOn ? '，可以选中文字加评论' : ''}。</p> : null}
+          </article>
+          {cmtOn && editor && showBody ? <CommentButton editor={editor} box={bodyBox} made={made} onComment={comment} /> : null}
+        </div>
+        {showBody && editor && toc.length && !tocOpen ? <TocButton wide={tocWide} onOpen={() => setTocOpen(true)} /> : null}
       </div>
       <input ref={fileInput} type="file" accept="image/*" className="sr" aria-label="选择图片" onChange={(e) => void pickImage(e)} />
       {link && editor ? <LinkDialog editor={editor} onClose={() => setLink(false)} /> : null}

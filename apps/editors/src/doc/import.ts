@@ -7,6 +7,7 @@ import mammoth from 'mammoth';
 import { marked } from 'marked';
 import type { EditorClient, EditorFile } from '@cai/bridge';
 import { anchorNames, anchorOfHref, slugOf, validAnchor } from './anchors';
+import { imageSize, placeImages, type ImageProgress, type PendingImage } from './images';
 
 const escapeHtml = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 export const extOf = (name: string) => (name.split('.').pop() ?? '').toLowerCase();
@@ -66,23 +67,25 @@ async function withCrossRefLinks(data: ArrayBuffer): Promise<ArrayBuffer> {
   } catch { return data; }
 }
 
+/** 转换时图片的占位地址，转完换成真的（images.ts） */
+const PH = 'cai-img:';
+
 /**
  * Word：里面的图片交给宿主保存成附件（得到带令牌的地址），传不上去时退成 data: 地址内嵌；交叉引用先改写成文档内链接（crossRefsToLinks）。
+ * 图片先收下、给占位地址，转完再一起传（一样的只传一次、同时传几张，onProgress 报进度），并带上像素宽高（images.ts）。
  * mammoth 的样式映射保持默认：Heading 1-3 → h1-h3，列表、表格、加粗、斜体、链接都能对上。
  */
-export async function docxToHtml(data: ArrayBuffer, client?: EditorClient): Promise<string> {
+export async function docxToHtml(data: ArrayBuffer, client?: EditorClient, onProgress?: ImageProgress): Promise<string> {
   data = await withCrossRefLinks(data);
+  const images: PendingImage[] = [];
   const convertImage = mammoth.images.imgElement(async (image) => {
-    const buf = await image.readAsArrayBuffer();
-    const type = image.contentType || 'image/png', blob = new Blob([buf], { type });
-    if (client) {
-      try { const r = await client.upload(blob, 'image.' + (type.split('/')[1] ?? 'png').replace('jpeg', 'jpg')); return { src: r.url }; } catch { /* 上传不了就内嵌 */ }
-    }
-    const b64 = btoa(Array.from(new Uint8Array(buf), (b) => String.fromCharCode(b)).join(''));
-    return { src: `data:${type};base64,${b64}` };
+    const raw: ArrayBuffer | Uint8Array = await image.readAsArrayBuffer(), bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw), size = imageSize(bytes);
+    images.push({ bytes, type: image.contentType || 'image/png' });
+    return { src: `${PH}${images.length - 1}`, ...(size ? { width: String(size.w), height: String(size.h) } : {}) };
   });
   const r = await mammoth.convertToHtml({ arrayBuffer: data }, { convertImage });
-  return sanitizeHtml(r.value);
+  const srcs = await placeImages(images, client, onProgress);
+  return sanitizeHtml(r.value.replace(/cai-img:(\d+)/g, (_, i: string) => srcs[Number(i)] ?? ''));
 }
 
 /** 能挂书签的块（编辑器里标题只有 1–3 级，4–6 级在 liftAnchors 里换成段落） */
@@ -150,9 +153,9 @@ export function liftAnchors(html: string): string {
 }
 
 /** 按扩展名把源文件转成 HTML；不认识的扩展名按纯文本处理 */
-export async function importToHtml(file: EditorFile, data: ArrayBuffer, client?: EditorClient): Promise<string> {
+export async function importToHtml(file: EditorFile, data: ArrayBuffer, client?: EditorClient, onProgress?: ImageProgress): Promise<string> {
   const ext = extOf(file.name);
-  if (ext === 'docx') return liftAnchors(await docxToHtml(data, client));
+  if (ext === 'docx') return liftAnchors(await docxToHtml(data, client, onProgress));
   const text = new TextDecoder('utf-8').decode(data);
   if (ext === 'md' || ext === 'markdown') return liftAnchors(markdownToHtml(text));
   if (ext === 'html' || ext === 'htm') return liftAnchors(sanitizeHtml(text));
