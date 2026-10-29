@@ -52,6 +52,12 @@
 .bs-fl-name { flex: 1; min-width: 0; }
 .bs-fl-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bs-vtypes { display: flex; flex-wrap: wrap; gap: 6px; }
+/* 字段的选项：一行一个，前面是选项的颜色，后面删除；最底下「添加选项」（2026-10-29） */
+.bs-opts { display: flex; flex-direction: column; gap: 6px; align-self: stretch; }
+.bs-opt { gap: 8px; }
+.bs-opt .input { flex: 1; min-width: 0; }
+.bs-opt .bs-optdot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; flex: none; }
+.bs-opt-add { align-self: flex-start; color: var(--accent); }
 .bs-rec .field > .select { align-self: stretch; }
 .bs-form .field > .select { align-self: stretch; }
 .bs-form .field-l .ic { vertical-align: -3px; color: var(--ink-3); }

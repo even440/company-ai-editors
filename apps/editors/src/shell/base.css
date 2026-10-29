@@ -475,7 +475,9 @@ a.list-row:hover { background: var(--surface-2); text-decoration: none; }
 .modal-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 0; }
 .modal-h h2 { font-size: 16px; }
 .modal-b { padding: 12px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
-.modal-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+/* 弹窗底下的按钮居中、最短 96px（2026-10-29 同事反馈，用户定全站的弹窗都这样，平台 company-ai 的 globals.css 同一套）；左边另有按钮的用 .spacer 隔开，还是一左一右 */
+.modal-f { display: flex; justify-content: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+.modal-f > .btn:not(.icon-only) { min-width: 96px; }
 .keyfull { font-size: 13px; padding: 6px 10px; white-space: normal; overflow-wrap: anywhere; user-select: all; }
 .drawer { position: fixed; z-index: 51; top: 0; right: 0; bottom: 0; width: min(480px, 100vw); background: var(--surface); box-shadow: var(--shadow); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
 .drawer-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }

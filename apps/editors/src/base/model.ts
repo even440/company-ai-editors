@@ -212,7 +212,6 @@ export function optsFrom(records: Rec[], fid: string): Opt[] {
   const list = [...seen];
   return (list.length ? list : ['选项 1', '选项 2']).map((o, i) => [o, COLORS[i % COLORS.length]] as Opt);
 }
-export const parseOpts = (s: string): Opt[] => s.split(/[,，\n]/).map((x) => x.trim()).filter(Boolean).map((o, i) => [o, COLORS[i % COLORS.length]] as Opt);
 
 /** 换类型以后把值转成新类型能用的样子，转不了的清掉 */
 export function coerce(type: FieldType, v: unknown, users: UserMap): unknown {
