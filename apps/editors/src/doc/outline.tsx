@@ -27,13 +27,26 @@ export function tocOf(doc: PmNode): TocItem[] {
   return out;
 }
 
-/** 目录跟着正文变：改动停下来一会儿再算，几百个标题的长文档打字时不卡 */
+/**
+ * 目录跟着正文变：改动停下来一会儿再算，几百个标题的长文档打字时不卡。
+ * 标题（级别、文字）没变时不换数组、目录不重画，只把各项的位置改成新的（在标题前面打字，后面每个标题的位置都会挪；
+ * 以前每 0.4 秒整个目录和编辑器重画一遍，2026-10-30 大文档打字卡）。目录里用到位置的地方（当前一节、点了跳过去）都是用的时候现读 pos
+ */
 export function useToc(editor: Editor | null): TocItem[] {
   const [items, setItems] = useState<TocItem[]>([]);
   useEffect(() => {
     if (!editor) { setItems([]); return; }
     let t = 0;
-    const calc = () => { t = 0; if (!editor.isDestroyed) setItems(tocOf(editor.state.doc)); };
+    const calc = () => {
+      t = 0;
+      if (editor.isDestroyed) return;
+      const next = tocOf(editor.state.doc);
+      setItems((cur) => {
+        if (cur.length !== next.length || cur.some((it, i) => it.key !== next[i].key)) return next;
+        cur.forEach((it, i) => { it.pos = next[i].pos; });
+        return cur;
+      });
+    };
     const later = () => { if (!t) t = window.setTimeout(calc, 400); };
     calc();
     editor.on('update', later);

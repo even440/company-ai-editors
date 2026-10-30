@@ -82,6 +82,13 @@
 .doc-body .ProseMirror-gapcursor:after { border-top: 1px solid var(--ink-2); }
 /* 图片：块级、最宽到正文宽度；选中时描边 */
 .doc-body img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
+/*
+ * 屏幕外的图片不排版、不画（2026-10-30 同事反馈：编辑迁移过来的操作手册很卡，整台电脑都跟着卡；几百张截图的长文档每按一个键浏览器都要把整篇的图过一遍，
+ * 本机模拟普通笔记本的速度量过，见 README「长文档」）。
+ * 没画的图按 contain-intrinsic-size 占位：image.ts 按图片的像素宽高写在行内（加上 width / height 属性给的比例，缩到正文宽度时高度也对），
+ * 没记宽高的老图片按这里的 320×180 占位；画过一次以后（auto）按真实大小记着，滚动条和目录跳转不跳
+ */
+.doc-body img { content-visibility: auto; contain-intrinsic-size: auto 320px auto 180px; }
 .doc-body img.ProseMirror-selectednode { outline: 2px solid var(--accent-btn); outline-offset: 2px; }
 /* 只读时单击图片看大图（编辑时双击） */
 .doc-body[contenteditable='false'] img { cursor: zoom-in; }
@@ -98,6 +105,8 @@
   .doc { max-width: none; padding: 0; background: #fff; color: #000; }
   .doc-body { font-size: 12pt; }
   .doc-body a { color: #000; }
+  /* 打印、导出 PDF 时每张图都要画出来 */
+  .doc-body img { content-visibility: visible; }
 }
 
 /* 评论：高亮全是 decoration，不写进正文；当前评论和评论框开着时的范围颜色更重。编辑时保留文字光标，只读时手形 */

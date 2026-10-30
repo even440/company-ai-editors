@@ -6,7 +6,7 @@
 
 - `DocEditor.tsx`：页面。协同连接、工具栏、链接弹窗、图片上传、导入、宿主消息。
 - `schema.ts`：节点集合 `schemaExtensions()`、`Y_FIELD`（正文所在的 Y.XmlFragment 名 `default`）、`Y_TITLE`（标题所在的 Y.Text 名 `title`）。从平台复制，多加了 `image` 节点。**平台服务端的协同服务和 `cleanDoc` 白名单也要认识 `image`，否则协同转换或保存时图片会被丢掉。**
-- `image.ts`：最简单的图片节点（块级、`src` / `alt` / `title` / `width` / `height`），starter-kit 3 没有图片节点，又不想多装包。宽高是图片的像素大小：浏览器在懒加载的图片出来之前按比例留好位置。
+- `image.ts`：最简单的图片节点（块级、`src` / `alt` / `title` / `width` / `height`），starter-kit 3 没有图片节点，又不想多装包。宽高是图片的像素大小：浏览器在懒加载的图片出来之前按比例留好位置；同样的宽高写成 `contain-intrinsic-size` 给屏幕外不画的图占位（见「长文档」）。
 - `images.ts`：导入 Word 时的图片：去重、同时传、读像素宽高（见「导入」）。
 - `textstyle.ts`、`liststyle.ts`、`format.tsx`：格式（见「格式」）：文字的字体、字号、颜色、底纹和段落对齐；列表、编号的样式；工具栏上的这几个按钮。
 - `outline.tsx`：目录（见「目录」）。
@@ -29,7 +29,7 @@
 |---|---|---|
 | 内容来源 | `ws(s)://宿主/ws/collab/<编号>?token=…` 上的 Y.Doc：正文 `Y.XmlFragment 'default'`，标题 `Y.Text 'title'` | `s.doc.content` |
 | 保存 | 服务端自己落库，编辑器不调保存接口 | 改动后 `s.markDirty(() => ({ content, plain }))`，会话停下来 1.5 秒后保存 |
-| 在线的人 | awareness 里的人 → `present` 消息（服务端会把 `user` 换成登录身份，页面冒充不了） | 会话的心跳（`/presence`） |
+| 在线的人 | awareness 里的人 → `present` 消息（服务端会把 `user` 换成登录身份，页面冒充不了）；名单变了才发，光标动不算 | 会话的心跳（`/presence`） |
 | 标题 | 宿主发 `title` 消息时写进 Y.Text；Y.Text 变了（别人改的）发 `title` 消息给宿主 | 宿主发 `title` 时只记下来 |
 | 连接状态 | `collab` 消息：connecting / connected / reconnecting / offline / denied / failed | 不发 |
 
@@ -101,3 +101,13 @@ y-websocket 的 `WebsocketProvider(serverUrl, roomname, doc, { params })`：`ser
 颜色、底纹、对齐和列表样式是按钮加弹出的面板（`format.tsx` 的 `Drop`）：面板挂在按钮下面（右边放不下时贴着按钮右边），点外面、按 Esc、切到别的窗口时收起；按下按钮和面板时不抢正文的焦点，选中的文字一直显示着。工具栏的层级压在正文里的浮动按钮（目录、评论）上面，面板才不被挡。
 
 开发时（`import.meta.env.DEV`）`window.__editor` 是当前的 Tiptap 实例，截图脚本和调试用。
+
+## 长文档
+
+2026-10-30 同事反馈编辑迁移过来的操作手册很卡、整台电脑跟着卡（新建的空文档正常）。本机造了一份同样规模的 Word（14 章、854 个标题、15 万字、627 张 1440×820 的截图）走真实的导入，打开后在中间打字，用浏览器把 CPU 降到四分之一模拟普通笔记本量：
+
+- 屏幕外的图片不排版、不画：`doc.css` 给正文里的 `img` 加 `content-visibility: auto`，`image.ts` 按图片的像素宽高写 `contain-intrinsic-size` 占位（加上 `width` / `height` 属性给的比例，缩到正文宽度时高度也对；没记宽高的老图片按 320×180），画过一次以后按真实大小记着。打印时全部画出来。只给图片加，不给每个段落加：每一块都加时浏览器要一直盯着几千个块在不在屏幕上，反而多花时间。
+- 在线的人名单没变就不发 `present`：光标一动 awareness 就变，以前每按一个键发一次，宿主整个文档页跟着重画（平台那边也改成名单没变不重画）。
+- 目录（`useToc`）标题没变时不换数组、不重画，只把各项的 `pos` 改成新的。
+
+量的结果（1920 宽、目录开着，打 32 个字）：每个键从按下到画面更新 47 → 37 毫秒，50 毫秒以上的卡顿 14～17 次 → 1 次；不降速时 16 → 13 毫秒。滚动条总高度从头滚到尾不变，目录跳转还是准的。剩下的时间主要是 ProseMirror 视图和协同（y-tiptap）每个键对比整篇、浏览器在超长的可编辑区里同步光标，暂时不动。

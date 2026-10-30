@@ -263,7 +263,7 @@ export function DocEditor({ session: s }: { session: Session }) {
     const base = s.wsUrl().replace(/\/ws\/collab\/.*$/, '/ws/collab');
     const provider = new WebsocketProvider(base, s.docId, doc, { params: { token: s.token, v: COLLAB_V }, disableBc: true, maxBackoffTime: 5000 });
     const sess: YSession = { doc, provider, user: { id: s.doc.user.id, name: s.doc.user.name, color: s.doc.user.color } };
-    let everSynced = false, offlineTimer: number | undefined;
+    let everSynced = false, offlineTimer: number | undefined, lastPresent = '';
     const failTimer = window.setTimeout(() => { if (!everSynced) setConn((c) => (c === 'denied' ? c : 'failed')); }, CONNECT_TIMEOUT);
     // 标题在 Y.Text 'title' 里：别人改了就告诉宿主
     const ytitle = doc.getText(Y_TITLE);
@@ -281,15 +281,19 @@ export function DocEditor({ session: s }: { session: Session }) {
       offlineTimer = window.setTimeout(() => setConn((c) => (c === 'reconnecting' ? 'offline' : c)), OFFLINE_AFTER);
     });
     // 服务端说重连也没用：没有权限、文档不存在
-    provider.on('closed', (ev: { code: number; reason: string }) => { window.clearTimeout(failTimer); setConn('denied'); setConnMsg(ev.reason || '没有权限'); s.send({ type: 'present', users: [] }); });
-    // 在线的人：awareness 里除了我以外的每个人报一次（服务端会把 user 换成登录身份，页面冒充不了）
+    provider.on('closed', (ev: { code: number; reason: string }) => { window.clearTimeout(failTimer); setConn('denied'); setConnMsg(ev.reason || '没有权限'); lastPresent = '[]'; s.send({ type: 'present', users: [] }); });
+    // 在线的人：awareness 里除了我以外的每个人报一次（服务端会把 user 换成登录身份，页面冒充不了）。
+    // 光标一动 awareness 就变（每按一个键都变），名单没变就不报：以前每个键都报一次，宿主整个文档页跟着重画，大文档打字卡（2026-10-30）
     const onAwareness = () => {
       const seen = new Map<string, PresenceUser>();
       for (const [cid, st] of provider.awareness.getStates()) {
         const u = (st as { user?: { id?: string; name?: string } }).user;
         if (cid !== doc.clientID && u?.id && u.id !== s.doc.user.id && !seen.has(u.id)) seen.set(u.id, { id: u.id, name: u.name ?? '', editing: true });
       }
-      s.send({ type: 'present', users: [...seen.values()] });
+      const users = [...seen.values()], key = JSON.stringify(users);
+      if (key === lastPresent) return;
+      lastPresent = key;
+      s.send({ type: 'present', users });
     };
     provider.awareness.on('change', onAwareness);
     setYsess(sess);
