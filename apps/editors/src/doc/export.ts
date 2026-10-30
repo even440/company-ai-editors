@@ -158,8 +158,8 @@ function runs(n: DocNode, w: WordCtx, extra: Marks = {}): ParagraphChild[] {
   return out;
 }
 
-/** 取图片字节和尺寸；拿不到（跨域、已删除）就返回空，导出时放一行说明代替 */
-async function fetchImage(src: string): Promise<{ data: ArrayBuffer; type: 'png' | 'jpg' | 'gif' | 'bmp'; width: number; height: number } | null> {
+/** 取图片字节和尺寸；拿不到（跨域、已删除）就返回空，导出时放一行说明代替。want 是文档里这张图的宽度（调过大小的按调过的，imgsize.tsx），最宽 MAX_IMG */
+async function fetchImage(src: string, want?: number): Promise<{ data: ArrayBuffer; type: 'png' | 'jpg' | 'gif' | 'bmp'; width: number; height: number } | null> {
   try {
     const res = await fetch(src);
     if (!res.ok) return null;
@@ -168,7 +168,7 @@ async function fetchImage(src: string): Promise<{ data: ArrayBuffer; type: 'png'
     const type = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('gif') ? 'gif' : mime.includes('bmp') ? 'bmp' : mime.includes('png') ? 'png' : null;
     if (!type) return null;
     const bmp = await createImageBitmap(blob);
-    const scale = Math.min(1, MAX_IMG / bmp.width);
+    const scale = Math.min(1, MAX_IMG / bmp.width, want && want > 0 ? want / bmp.width : 1);
     const size = { width: Math.round(bmp.width * scale), height: Math.round(bmp.height * scale) };
     bmp.close();
     return { data: await blob.arrayBuffer(), type, ...size };
@@ -199,7 +199,7 @@ async function blocks(n: DocNode, w: WordCtx, ctx: { list?: { reference: string;
         break;
       case 'horizontalRule': out.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'C9CFD9' } }, spacing: { after: 120 } })); break;
       case 'image': {
-        const img = typeof c.attrs?.src === 'string' ? await fetchImage(c.attrs.src) : null;
+        const img = typeof c.attrs?.src === 'string' ? await fetchImage(c.attrs.src, Number(c.attrs?.width) || undefined) : null;
         out.push(img ? new Paragraph({ children: [new ImageRun({ type: img.type, data: img.data, transformation: { width: img.width, height: img.height } })] }) : new Paragraph({ children: [new TextRun({ text: `[图片${c.attrs?.alt ? '：' + String(c.attrs.alt) : ''}]`, color: '6F7B8F' })] }));
         break;
       }

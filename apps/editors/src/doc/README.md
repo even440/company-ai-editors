@@ -6,11 +6,12 @@
 
 - `DocEditor.tsx`：页面。协同连接、工具栏、链接弹窗、图片上传、导入、宿主消息。
 - `schema.ts`：节点集合 `schemaExtensions()`、`Y_FIELD`（正文所在的 Y.XmlFragment 名 `default`）、`Y_TITLE`（标题所在的 Y.Text 名 `title`）。从平台复制，多加了 `image` 节点。**平台服务端的协同服务和 `cleanDoc` 白名单也要认识 `image`，否则协同转换或保存时图片会被丢掉。**
-- `image.ts`：最简单的图片节点（块级、`src` / `alt` / `title` / `width` / `height`），starter-kit 3 没有图片节点，又不想多装包。宽高是图片的像素大小：浏览器在懒加载的图片出来之前按比例留好位置；同样的宽高写成 `contain-intrinsic-size` 给屏幕外不画的图占位（见「长文档」）。
+- `image.ts`：最简单的图片节点（块级、`src` / `alt` / `title` / `width` / `height`），starter-kit 3 没有图片节点，又不想多装包。宽高是图片显示的大小（插入、导入时是图片的像素大小，调过大小后是调过的，见 `imgsize.tsx`）：浏览器在懒加载的图片出来之前按比例留好位置；同样的宽高写成 `contain-intrinsic-size` 给屏幕外不画的图占位（见「长文档」）。
 - `images.ts`：导入 Word 时的图片：去重、同时传、读像素宽高（见「导入」）。
 - `textstyle.ts`、`liststyle.ts`、`format.tsx`：格式（见「格式」）：文字的字体、字号、颜色、底纹和段落对齐；列表、编号的样式；工具栏上的这几个按钮。
 - `outline.tsx`：目录（见「目录」）。
 - `jump.ts`：跳到正文里的某一块（目录、书签和文档内链接共用，见「目录」）。
+- `imgsize.tsx`：调整图片大小（2026-10-30）：编辑时选中图片，右边和右下角的手柄按原比例拖，松手写回 `width` / `height`（显示宽度就是它，最宽到正文宽度；导出 Word 也按它），双击手柄恢复原始像素大小。框放在正文的滚动容器里，不用节点视图。
 - `content.ts`：拼结构的小函数、`contentOf`（空内容 `{}` → 空白文档）、`plainOf`（纯文本）、`paragraphsOf`（文字按行成段落）。和平台 `content.ts` 里的同名函数一致。
 - `export.ts`：`toDocx`（docx 库）、`toMarkdown`。
 - `import.ts`：docx（mammoth）、md（marked）、txt、html → HTML，再由 `editor.commands.setContent(html)` 解析；`sanitizeHtml` 去掉脚本和事件属性。
@@ -111,3 +112,7 @@ y-websocket 的 `WebsocketProvider(serverUrl, roomname, doc, { params })`：`ser
 - 目录（`useToc`）标题没变时不换数组、不重画，只把各项的 `pos` 改成新的。
 
 量的结果（1920 宽、目录开着，打 32 个字）：每个键从按下到画面更新 47 → 37 毫秒，50 毫秒以上的卡顿 14～17 次 → 1 次；不降速时 16 → 13 毫秒。滚动条总高度从头滚到尾不变，目录跳转还是准的。剩下的时间主要是 ProseMirror 视图和协同（y-tiptap）每个键对比整篇、浏览器在超长的可编辑区里同步光标，暂时不动。
+
+## 链接到文档里的标题
+
+2026-10-30 同事反馈插入链接只能填网页、邮件或站内地址，要能链到文档里的目录。链接弹窗（`DocEditor.tsx` 的 `LinkDialog`）下面列出正文的标题（`outline.tsx` 的 `tocOf`，按级别缩进，八个以上能搜），点一个就链到它：标题已经有书签（`anchor` 属性）就用第一个，没有就起一个 `h_` 加 8 位字母数字（Word 也认的书签名写法，`newAnchorName`），挂到标题上，链接地址是 `#书签`；选中了文字就给它加链接，没选中插入标题的文字。点链接跳转、导出 Word 时的书签和内部链接都是原来「书签和文档内链接」那一套（`anchors.ts`、`export.ts`）。地址栏里直接填 `#书签` 也行。

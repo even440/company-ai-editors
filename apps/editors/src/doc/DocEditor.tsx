@@ -26,7 +26,9 @@ import { contentOf, paragraphsOf, plainOf, type DocNode } from './content';
 import { toDocx, toMarkdown } from './export';
 import { AlignPick, ColorPick, FontPick, ListPick, SizePick } from './format';
 import { importToHtml, titleOf } from './import';
-import { Outline, TOC_WIDE, TocButton, useToc, useTocOpen, useWide } from './outline';
+import { anchorNames, anchorOfHref, anchorValue, findAnchor, validAnchor } from './anchors';
+import { ImageResizer } from './imgsize';
+import { Outline, TOC_WIDE, TocButton, tocOf, useToc, useTocOpen, useWide, type TocItem } from './outline';
 import { Y_FIELD, Y_TITLE, schemaExtensions } from './schema';
 import './doc.css';
 
@@ -140,24 +142,62 @@ function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => voi
   );
 }
 
-/** 链接弹窗：有选中文字就给它加链接，没有就把地址本身插进去 */
+/** 给标题新起一个书签名：Word 也认的写法（字母开头，只有字母、数字、下划线），文档里没人用过 */
+function newAnchorName(editor: Editor): string {
+  for (;;) {
+    const name = 'h_' + Math.random().toString(36).slice(2, 10);
+    if (validAnchor(name) && !findAnchor(editor.state.doc, name)) return name;
+  }
+}
+
+/**
+ * 链接弹窗：有选中文字就给它加链接，没有就把地址本身插进去。
+ * 也能链到文档里的标题（用户 2026-10-30 转来同事反馈：插入链接只能填网页、邮件或站内地址，要能插文档里的目录）：
+ * 下面列出正文的标题，点一个就链到它——标题没有书签时给它起一个（挂在 anchor 属性上，导出 Word 也带着），链接地址是 #书签；
+ * 没选中文字时插入标题的文字。点这种链接跳到那个标题（anchors.ts）
+ */
 function LinkDialog({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   const [href, setHref] = useState<string>(String(editor.getAttributes('link').href ?? ''));
+  const [q, setQ] = useState('');
   const had = editor.isActive('link');
+  const heads = useMemo(() => tocOf(editor.state.doc), [editor]);
+  // 正在改的链接指向文档里的哪个标题（高亮它）
+  const curPos = useMemo(() => { const name = anchorOfHref(href); const hit = name ? findAnchor(editor.state.doc, name) : null; return hit?.node.type.name === 'heading' ? hit.pos : -1; }, [editor, href]);
+  const shown = useMemo(() => { const k = q.trim().toLowerCase(); return k ? heads.filter((h) => h.text.toLowerCase().includes(k)) : heads; }, [heads, q]);
+  const put = (url: string, text: string) => {
+    const { from, to } = editor.state.selection;
+    if (from === to && !had) editor.chain().focus().insertContent({ type: 'text', text, marks: [{ type: 'link', attrs: { href: url } }] }).run();
+    else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+  };
   const apply = () => {
     const v = href.trim();
     if (!v) { editor.chain().focus().extendMarkRange('link').unsetLink().run(); onClose(); return; }
-    const url = /^(https?:\/\/|mailto:|\/)/i.test(v) ? v : 'https://' + v;
-    const { from, to } = editor.state.selection;
-    if (from === to && !had) editor.chain().focus().insertContent({ type: 'text', text: url, marks: [{ type: 'link', attrs: { href: url } }] }).run();
-    else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    const url = /^(https?:\/\/|mailto:|\/|#)/i.test(v) ? v : 'https://' + v;
+    put(url, url);
+    onClose();
+  };
+  const toHeading = (it: TocItem) => {
+    const node = editor.state.doc.nodeAt(it.pos);
+    if (!node || node.type.name !== 'heading') { toast('这个标题已经不在了，请重新打开'); return; }
+    const names = anchorNames(node.attrs.anchor);
+    const name = names[0] ?? newAnchorName(editor);
+    // 先挂书签（只改属性，选区不动），再加链接
+    if (!names.length) editor.chain().command(({ tr }) => { tr.setNodeAttribute(it.pos, 'anchor', anchorValue([name])); return true; }).run();
+    put('#' + encodeURIComponent(name), it.text || '跳转');
     onClose();
   };
   return (
     <Modal title={had ? '修改链接' : '插入链接'} onClose={onClose} footer={<>{had ? <button type="button" className="btn" onClick={() => { editor.chain().focus().extendMarkRange('link').unsetLink().run(); onClose(); }}>去掉链接</button> : null}<span className="spacer" /><button type="button" className="btn" onClick={onClose}>取消</button><button type="button" className="btn primary" onClick={apply}>确定</button></>}>
-      <Field label="地址" htmlFor="link-href" hint="网页、邮件（mailto:）或站内地址">
+      <Field label="地址" htmlFor="link-href" hint="网页、邮件（mailto:）或站内地址；也可以在下面选文档里的标题">
         <input id="link-href" className="input" value={href} onChange={(e) => setHref(e.target.value)} placeholder="https://" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') apply(); }} />
       </Field>
+      {heads.length ? <Field label="链接到文档里的标题" htmlFor="link-head-q">
+        {heads.length > 8 ? <input id="link-head-q" className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜标题" /> : null}
+        <div className="link-heads" role="list">
+          {shown.length ? shown.map((it) => <button key={it.key} type="button" role="listitem" className={cx('link-head', it.pos === curPos && 'on')} style={{ paddingLeft: 8 + (it.level - 1) * 14 }} onClick={() => toHeading(it)} title={it.text}>{it.text || '（没有文字的标题）'}</button>)
+            : <p className="fine">没有找到「{q.trim()}」</p>}
+        </div>
+      </Field> : null}
     </Modal>
   );
 }
@@ -429,6 +469,7 @@ export function DocEditor({ session: s }: { session: Session }) {
             {ro && showBody ? <p className="note ed-note">你对这篇文档只有阅读权限{cmtOn ? '，可以选中文字加评论' : ''}。</p> : null}
           </article>
           {cmtOn && editor && showBody ? <CommentButton editor={editor} box={bodyBox} made={made} onComment={comment} /> : null}
+          {editable && editor && showBody ? <ImageResizer editor={editor} box={bodyBox} /> : null}
         </div>
         {showBody && editor && toc.length && !tocOpen ? <TocButton wide={tocWide} onOpen={() => setTocOpen(true)} /> : null}
       </div>
