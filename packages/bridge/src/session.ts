@@ -4,7 +4,7 @@
  * 标题变了 s.setTitle(t)，收到宿主的消息用 s.onHost(cb)。
  *
  * 地址参数：doc 内容编号（必填）、token 编辑令牌（必填）、api 宿主地址（默认当前来源）、ws 协同地址（默认由 api 推出来）、
- * theme light|dark|auto、mode edit|read|fill。
+ * theme light|dark|auto、mode edit|read|fill、ui 界面语言 zh-CN|en|pt-BR|ja|ko（apps/editors 的 shell/i18n.ts 读，不在会话里）。
  */
 import { ApiError, EditorClient, isConflict } from './client';
 import { EDITOR_SOURCE, HOST_SOURCE, type EditorDoc, type EditorToHost, type HostToEditor, type PresenceUser, type SaveConflict } from './protocol';

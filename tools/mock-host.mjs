@@ -1,7 +1,7 @@
 /**
  * 假宿主：不用平台也能开发编辑器。实现 packages/bridge/src/protocol.ts 里的接口（内存里），并提供一个带消息日志的宿主页面。
  * 用法：node tools/mock-host.mjs [端口，默认 5180] [编辑器地址，默认 http://localhost:5174/editors]
- * 打开 http://localhost:5180/host.html?kind=sheet（可加 &doc=<编号>&mode=read&theme=dark）。
+ * 打开 http://localhost:5180/host.html?kind=sheet（可加 &doc=<编号>&mode=read&theme=dark&ui=pt-BR，ui 是界面语言）。
  * 令牌格式：<内容编号>:<权限>，权限 owner | edit | read | respond。
  * 评论：编辑器 ready 里带 comments: true 时，宿主页把评论列表发过去；comment-new 直接建一条（内容是固定文字），
  * 列表存在宿主页的 localStorage 里（按内容编号），右边可以解决、定位、删除。
@@ -37,7 +37,7 @@ for (const d of docs.values()) { if (d.sampleFile && assets.has('sample-' + d.sa
 const hostPage = (url) => {
   const kind = url.searchParams.get('kind') || 'doc', docId = url.searchParams.get('doc') || [...docs.values()].find((d) => d.kind === kind)?.id || 'demo-doc';
   const perm = url.searchParams.get('perm') || 'owner', mode = url.searchParams.get('mode') || 'edit', theme = url.searchParams.get('theme') || 'light';
-  const src = `${EDITORS}/${kind}/?doc=${encodeURIComponent(docId)}&token=${encodeURIComponent(docId + ':' + perm)}&api=${encodeURIComponent(`http://localhost:${PORT}`)}&theme=${theme}&mode=${mode}${kind === 'doc' ? '&collab=0' : ''}`;
+  const src = `${EDITORS}/${kind}/?doc=${encodeURIComponent(docId)}&token=${encodeURIComponent(docId + ':' + perm)}&api=${encodeURIComponent(`http://localhost:${PORT}`)}&theme=${theme}&mode=${mode}${kind === 'doc' ? '&collab=0' : ''}${url.searchParams.get('ui') ? '&ui=' + encodeURIComponent(url.searchParams.get('ui')) : ''}`;
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>假宿主 · ${kind}</title>
 <style>body{margin:0;font:13px/1.5 system-ui,sans-serif;display:grid;grid-template-rows:auto 1fr;height:100vh;background:${theme === 'dark' ? '#0f1218;color:#eef1f6' : '#f5f7fb;color:#1a2233'}}
 header{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #d5dbe6;flex-wrap:wrap}header b{font-size:15px}

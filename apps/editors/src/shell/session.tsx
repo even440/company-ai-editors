@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { openSession, type HostToEditor, type Session, type SessionOptions } from '@cai/bridge';
+import { ST } from './i18n';
 
 const Ctx = createContext<Session | null>(null);
 export function useSession(): Session { const s = useContext(Ctx); if (!s) throw new Error('会话还没打开'); return s; }
@@ -23,8 +24,8 @@ export function useTheme(): 'light' | 'dark' {
 export function EditorApp({ options, children }: { options?: SessionOptions; children: (s: Session) => ReactNode }) {
   const [s, setS] = useState<Session | null>(null), [err, setErr] = useState<string | null>(null);
   useEffect(() => { openSession(options).then(setS).catch((e: Error) => setErr(e.message)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  if (err) return <div className="ed-state"><div className="ed-err"><b>打不开这份内容</b><p>{err}</p><p className="muted">请从平台里重新打开；如果一直这样，联系管理员。</p></div></div>;
-  if (!s) return <div className="ed-state"><span className="spin" role="status" aria-label="加载中" /></div>;
+  if (err) return <div className="ed-state"><div className="ed-err"><b>{ST.openFail}</b><p>{err}</p><p className="muted">{ST.openFailHint}</p></div></div>;
+  if (!s) return <div className="ed-state"><span className="spin" role="status" aria-label={ST.loading} /></div>;
   return <Ctx.Provider value={s}>{children(s)}</Ctx.Provider>;
 }
 

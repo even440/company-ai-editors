@@ -20,7 +20,7 @@
 5. `s.doc.importFile` 有值时表示这份内容刚从文件导入、还没转换：下载它（`s.client.assetUrl(id)`）、转换成本格式、保存，再调 `s.client.imported()`，并 `s.send({ type: 'imported', title })`。
 6. 图片等附件用 `s.client.upload(file)`，得到带令牌的地址。
 7. 标题由宿主显示和修改，编辑器不画标题；宿主发 `title` 消息时同步到自己的状态（幻灯片等会把标题写进内容的格式需要）。
-8. 界面文字用中文，类名沿用 `base.css`（`.btn`、`.tt`、`.dtool`、`.input`、`.select`、`.chip`、`.card`、`.tbl`、`.modal` 等；原型里各格式的样式 `.sh-*`、`.bs-*`、`.sv-*`、`.mn-*`、`.wb-*`、`.fl-*`、`.fv-*` 也都在）。深色主题靠变量，不写死颜色。手机宽度（390px）也要能用。
+8. 界面文字跟宿主的界面语言（地址参数 `ui`，`shell/i18n.ts` 的 `lang` / `pick`；外壳自己的字在那里的 `ST`）：问卷已经是五种语言（`survey/i18n.ts`，2026-11-04 巴西同事用葡语界面时问卷全是中文），新写的界面文字照它的做法写成五种语言，别的格式还是中文、以后逐个改；文字不写进 CSS 的 `content`（用 `attr(data-…)`）。类名沿用 `base.css`（`.btn`、`.tt`、`.dtool`、`.input`、`.select`、`.chip`、`.card`、`.tbl`、`.modal` 等；原型里各格式的样式 `.sh-*`、`.bs-*`、`.sv-*`、`.mn-*`、`.wb-*`、`.fl-*`、`.fv-*` 也都在）。深色主题靠变量，不写死颜色。手机宽度（390px）也要能用。
 9. 注释用中文，说明「为什么」。不新增依赖；确实需要时在报告里说明，不要自己 `npm install`。
 10. 评论（现在是 doc、sheet）：`mount(…, { comments: true })` 让 `ready` 带上能力标记；宿主发过 `comments`（哪怕是空数组）才显示评论入口。评论绝不能改内容（不写样式标记、不改格子、不调保存），只读的人也要能评论。锚点格式见 `protocol.ts` 的 `CommentAnchor`，各编辑器的做法见各自的 `README.md`。
 

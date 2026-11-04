@@ -4,7 +4,8 @@
  */
 import { createElement, useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
 
-interface Props { value: string; onChange: (v: string) => void; className?: string; disabled?: boolean; tag?: 'span' | 'div' | 'b'; label?: string; onEnter?: () => void }
+/** ph：空的时候显示的提示（样式里 :empty::before 取 data-ph，跟着界面语言） */
+interface Props { value: string; onChange: (v: string) => void; className?: string; disabled?: boolean; tag?: 'span' | 'div' | 'b'; label?: string; ph?: string; onEnter?: () => void }
 
 function pastePlain(e: ClipboardEvent<HTMLElement>) {
   e.preventDefault();
@@ -18,11 +19,11 @@ function pastePlain(e: ClipboardEvent<HTMLElement>) {
   e.currentTarget.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-export function Editable({ value, onChange, className, disabled, tag = 'span', label, onEnter }: Props) {
+export function Editable({ value, onChange, className, disabled, tag = 'span', label, ph, onEnter }: Props) {
   const ref = useRef<HTMLElement>(null);
   useLayoutEffect(() => { const el = ref.current; if (el && el.textContent !== value) el.textContent = value; });
   return createElement(tag, {
-    ref, className, contentEditable: !disabled, suppressContentEditableWarning: true, spellCheck: false, role: 'textbox', 'aria-label': label,
+    ref, className, contentEditable: !disabled, suppressContentEditableWarning: true, spellCheck: false, role: 'textbox', 'aria-label': label, 'data-ph': ph,
     onInput: (e: React.FormEvent<HTMLElement>) => onChange(e.currentTarget.textContent ?? ''),
     onKeyDown: (e: KeyboardEvent<HTMLElement>) => { if (e.key === 'Enter') { e.preventDefault(); if (e.nativeEvent.isComposing) return; if (onEnter) onEnter(); else e.currentTarget.blur(); } else if (e.key === 'Escape') e.currentTarget.blur(); },
     onPaste: pastePlain,

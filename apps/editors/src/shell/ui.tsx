@@ -1,6 +1,7 @@
 /** 编辑器共用的小组件：图标、工具栏按钮、下拉、弹窗、提示。类名和平台的 globals.css 一致，样式在 base.css 里 */
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { ST } from './i18n';
 import { ICONS } from './icons';
 
 export const cx = (...a: (string | false | null | undefined)[]) => a.filter(Boolean).join(' ');
@@ -39,7 +40,7 @@ export function Field({ label, htmlFor, hint, children }: { label: ReactNode; ht
 export function Modal({ title, onClose, footer, children, wide }: { title: string; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean }) {
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [onClose]);
   return createPortal(
-    <div id="overlay"><div className="scrim" onClick={onClose} /><div className={cx('modal', wide && 'wide')} role="dialog" aria-modal="true" aria-label={title}><div className="modal-h"><h2>{title}</h2><button type="button" className="btn ghost sm icon-only" onClick={onClose} aria-label="关闭"><Icon name="x" /></button></div><div className="modal-b">{children}</div>{footer ? <div className="modal-f">{footer}</div> : null}</div></div>,
+    <div id="overlay"><div className="scrim" onClick={onClose} /><div className={cx('modal', wide && 'wide')} role="dialog" aria-modal="true" aria-label={title}><div className="modal-h"><h2>{title}</h2><button type="button" className="btn ghost sm icon-only" onClick={onClose} aria-label={ST.close}><Icon name="x" /></button></div><div className="modal-b">{children}</div>{footer ? <div className="modal-f">{footer}</div> : null}</div></div>,
     document.body,
   );
 }
@@ -59,6 +60,6 @@ export function Toaster() {
 }
 
 /** 确认框：返回 Promise */
-export function Confirm({ title, text, ok = '确定', danger, onOk, onClose }: { title: string; text: ReactNode; ok?: string; danger?: boolean; onOk: () => void; onClose: () => void }) {
-  return <Modal title={title} onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>取消</button><button type="button" className={cx('btn primary', danger && 'danger')} onClick={() => { onOk(); onClose(); }}>{ok}</button></>}><p>{text}</p></Modal>;
+export function Confirm({ title, text, ok = ST.ok, danger, onOk, onClose }: { title: string; text: ReactNode; ok?: string; danger?: boolean; onOk: () => void; onClose: () => void }) {
+  return <Modal title={title} onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>{ST.cancel}</button><button type="button" className={cx('btn primary', danger && 'danger')} onClick={() => { onOk(); onClose(); }}>{ok}</button></>}><p>{text}</p></Modal>;
 }
