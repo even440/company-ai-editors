@@ -60,7 +60,7 @@ export function handleHost(s: Session, m: HostToEditor) {
     case 'export':
       if (m.format === 'pptx') void exportPptx(s)
       else if (m.format === 'pdf') printRequest.value++
-      else message.error(`不支持导出为 ${m.format}`)
+      else { message.error(`不支持导出为 ${m.format}`); s.exportFailed() }
       break
     case 'command':
       // 不调 requestFullscreen：postMessage 不算用户操作，浏览器会拒绝；要全屏由宿主对 iframe 做
