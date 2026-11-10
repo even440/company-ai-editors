@@ -5,8 +5,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { constructTable, createColumnHelper, tableFeatures, type Table } from '@tanstack/react-table';
 import { Icon, cx } from '../shell/ui';
-import { CellView, Picker } from './cells';
-import { FT, type Content, type Field, type Rec, type UserMap, type View } from './model';
+import { AttachPop, ButtonCell, CellView, Picker, ScanModal, Stars } from './cells';
+import { FT, dateInput, dateStore, isAuto, isChoice, isListType, isNumeric, isUserType, locOf, locSet, val, type Content, type Field, type Rec, type UserMap, type View } from './model';
 
 const features = tableFeatures({});
 const helper = createColumnHelper<typeof features, Rec>();
@@ -30,7 +30,13 @@ function staticBindings(): Bindings {
   return b as unknown as Bindings;
 }
 /** 每种字段的列宽 */
-const WIDTH: Record<Field['type'], number> = { text: 190, select: 130, multi: 200, user: 140, date: 130, number: 120, check: 90, url: 220 };
+const WIDTH: Record<Field['type'], number> = {
+  text: 190, select: 130, multi: 200, user: 140, date: 130, number: 120, check: 90, url: 220,
+  currency: 140, progress: 150, rating: 130, phone: 150, email: 200, attach: 180, autonum: 100, created: 160, updated: 160, creator: 140, editor: 140,
+  group: 180, formula: 150, lookup: 170, stage: 170, button: 120, location: 200, barcode: 160, sign: 120, duplex: 200, link: 200,
+};
+/** 带时间的日期要宽一点 */
+const widthOf = (f: Field) => (f.type === 'date' && f.time ? 170 : WIDTH[f.type]);
 const RH = 36, OVERSCAN = 12;
 
 export interface GridProps {
@@ -44,12 +50,14 @@ export interface GridProps {
 }
 
 export function GridView({ c, view, recs, fields, users, ro, onSet, onOpen, onAdd, onFieldMenu, onAddField }: GridProps) {
-  const columns = useMemo(() => helper.columns(fields.map((f) => helper.accessor((r: Rec) => r.v[f.id], { id: f.id, header: f.name }))), [fields]);
+  const columns = useMemo(() => helper.columns(fields.map((f) => helper.accessor((r: Rec) => val(f, r), { id: f.id, header: f.name }))), [fields]);
   // 只用 react-table 的列模型（列定义、表头分组、按行取格子），实例随列和数据重建；为什么不用 useTable 见 staticBindings 的注释
   const table = useMemo(() => constructTable({ features: { ...features, coreReactivityFeature: staticBindings() }, columns, data: recs, getRowId: (r) => r.id }), [columns, recs]);
   const byId = useMemo(() => new Map(c.fields.map((f) => [f.id, f])), [c.fields]);
   const [edit, setEdit] = useState<{ rid: string; fid: string } | null>(null);
   const [pick, setPick] = useState<{ rid: string; fid: string; at: { x: number; y: number } } | null>(null);
+  /** 只能扫码录入的条码：点格子直接开摄像头 */
+  const [scan, setScan] = useState<{ rid: string; fid: string } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0), [vh, setVh] = useState(600);
   const pendingBottom = useRef(false);
@@ -68,24 +76,31 @@ export function GridView({ c, view, recs, fields, users, ro, onSet, onOpen, onAd
   const start = Math.max(0, Math.floor(scrollTop / RH) - OVERSCAN), end = Math.min(rows.length, Math.ceil((scrollTop + vh) / RH) + OVERSCAN);
   // 行号列按位数加宽，几千行时 4 位数字也放得下
   const nw = Math.max(44, 18 + String(rows.length).length * 8);
-  const total = fields.reduce((s, f) => s + WIDTH[f.type], 0) + nw + 44;
+  const total = fields.reduce((s, f) => s + widthOf(f), 0) + nw + 44;
   const cols = fields.length + 2;
 
-  const commitText = (rid: string, f: Field, raw: string) => { onSet(rid, f.id, f.type === 'number' ? (raw.trim() === '' ? '' : Number(raw)) : raw); setEdit(null); };
+  const commitText = (rid: string, f: Field, raw: string, old: unknown) => { onSet(rid, f.id, isNumeric(f.type) ? (raw.trim() === '' || !Number.isFinite(Number(raw)) ? '' : Number(raw)) : f.type === 'date' ? dateStore(f, raw) : f.type === 'location' ? locSet(old, raw) : raw); setEdit(null); };
   const clickCell = (e: React.MouseEvent<HTMLTableCellElement>, rid: string, f: Field, v: unknown) => {
-    if (ro) return;
-    if (f.type === 'check') { onSet(rid, f.id, !v); return; }
     const r = e.currentTarget.getBoundingClientRect();
-    if (f.type === 'select' || f.type === 'multi' || f.type === 'user') { setEdit(null); setPick({ rid, fid: f.id, at: { x: r.left, y: r.bottom + 2 } }); return; }
+    // 附件只读时也能点开看、下载；评分的星星自己接点击；系统字段不能改
+    if (f.type === 'attach') { if (ro && !(Array.isArray(v) && v.length)) return; setEdit(null); setPick({ rid, fid: f.id, at: { x: r.left, y: r.bottom + 2 } }); return; }
+    // 签字要画板：打开这条记录的弹窗去签（只读时也能点开看是谁签的）
+    if (f.type === 'sign') { onOpen(rid); return; }
+    if (ro || isAuto(f.type) || f.type === 'rating' || f.type === 'button') return;
+    if (f.type === 'check') { onSet(rid, f.id, !v); return; }
+    if (isChoice(f.type) || isListType(f.type) || isUserType(f.type)) { setEdit(null); setPick({ rid, fid: f.id, at: { x: r.left, y: r.bottom + 2 } }); return; }
+    if (f.type === 'barcode' && f.scan) { setEdit(null); setPick(null); setScan({ rid, fid: f.id }); return; }
     setPick(null); setEdit({ rid, fid: f.id });
   };
-  const addRow = () => { const id = onAdd(); const f = fields.find((x) => x.type === 'text') ?? fields[0]; pendingBottom.current = true; if (f && (f.type === 'text' || f.type === 'number' || f.type === 'url' || f.type === 'date')) setEdit({ rid: id, fid: f.id }); };
+  /** 能直接在格子里打字的类型 */
+  const typed = (f: Field) => !isAuto(f.type) && !isChoice(f.type) && !isListType(f.type) && !['user', 'check', 'rating', 'attach', 'button', 'sign'].includes(f.type) && !(f.type === 'barcode' && f.scan);
+  const addRow = () => { const id = onAdd(); const f = fields.find((x) => x.type === 'text') ?? fields.find(typed); pendingBottom.current = true; if (f) setEdit({ rid: id, fid: f.id }); };
   const pickField = pick ? byId.get(pick.fid) : undefined, pickRec = pick ? recs.find((r) => r.id === pick.rid) : undefined;
   const closePick = useCallback(() => setPick(null), []);
 
   return <div ref={wrap} className="bs-wrap" onScroll={onScroll}>
     <table className={cx('bs-grid', !ro && 'editable')} style={{ width: total }}>
-      <colgroup><col style={{ width: nw }} />{fields.map((f) => <col key={f.id} style={{ width: WIDTH[f.type] }} />)}<col /></colgroup>
+      <colgroup><col style={{ width: nw }} />{fields.map((f) => <col key={f.id} style={{ width: widthOf(f) }} />)}<col /></colgroup>
       <thead>{table.getHeaderGroups().map((g) => <tr key={g.id}><th className="bs-n">#</th>
         {g.headers.map((h) => { const f = byId.get(h.column.id)!; const s = view.sort?.fid === f.id ? view.sort.dir : null; return <th key={h.id} title={`${f.name}（${FT[f.type][1]}）`} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onFieldMenu(f, { x: r.left, y: r.bottom + 2 }); }} onContextMenu={(e) => { e.preventDefault(); onFieldMenu(f, { x: e.clientX, y: e.clientY }); }}>
           <span className="bs-th"><Icon name={FT[f.type][0]} /><b>{h.isPlaceholder ? null : String(h.column.columnDef.header ?? f.name)}</b>{s ? <Icon className="bs-sort" name={s === 'asc' ? 'up' : 'down'} /> : null}</span></th>; })}
@@ -95,9 +110,10 @@ export function GridView({ c, view, recs, fields, users, ro, onSet, onOpen, onAd
         {rows.slice(start, end).map((row, i) => <tr key={row.id} className="bs-row">
           <td className="bs-n click" title="打开记录" onClick={() => onOpen(row.id)}>{start + i + 1}</td>
           {row.getAllCells().map((cell) => { const f = byId.get(cell.column.id)!, v = cell.getValue(); const editing = edit && edit.rid === row.id && edit.fid === f.id;
-            return <td key={cell.id} className={cx('bs-cell', f.type === 'number' && 'num', editing && 'editing')} onClick={(e) => clickCell(e, row.id, f, v)}>
-              {editing ? <input className="bs-cellin" autoFocus type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} step="any" defaultValue={v == null ? '' : String(v)}
-                onBlur={(e) => commitText(row.id, f, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitText(row.id, f, e.currentTarget.value); } else if (e.key === 'Escape') { e.preventDefault(); setEdit(null); } }} /> : <CellView f={f} v={v} users={users} />}
+            return <td key={cell.id} className={cx('bs-cell', isNumeric(f.type) && f.type !== 'rating' && f.type !== 'progress' && 'num', isAuto(f.type) && 'auto', editing && 'editing')} onClick={(e) => clickCell(e, row.id, f, v)}>
+              {editing ? <input className="bs-cellin" autoFocus type={isNumeric(f.type) ? 'number' : f.type === 'date' ? (f.time ? 'datetime-local' : 'date') : f.type === 'phone' ? 'tel' : f.type === 'email' ? 'email' : 'text'} step="any" defaultValue={f.type === 'date' ? dateInput(f, v) : f.type === 'location' ? (typeof v === 'string' ? v : locOf(v)?.addr ?? '') : v == null ? '' : String(v)}
+                onBlur={(e) => commitText(row.id, f, e.target.value, v)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitText(row.id, f, e.currentTarget.value, v); } else if (e.key === 'Escape') { e.preventDefault(); setEdit(null); } }} />
+                : f.type === 'rating' && !ro ? <Stars v={v} onChange={(n) => onSet(row.id, f.id, n)} /> : f.type === 'button' ? <ButtonCell f={f} r={row.original} /> : <CellView f={f} v={v} users={users} />}
             </td>; })}
           <td />
         </tr>)}
@@ -106,6 +122,9 @@ export function GridView({ c, view, recs, fields, users, ro, onSet, onOpen, onAd
         {!rows.length && ro ? <tr><td colSpan={cols} className="bs-empty">没有记录</td></tr> : null}
       </tbody>
     </table>
-    {pick && pickField && pickRec ? <Picker f={pickField} v={pickRec.v[pickField.id]} users={users} at={pick.at} onChange={(v) => onSet(pick.rid, pick.fid, v)} onClose={closePick} /> : null}
+    {pick && pickField && pickRec ? (pickField.type === 'attach'
+      ? <AttachPop v={pickRec.v[pickField.id]} at={pick.at} ro={ro} onChange={(v) => onSet(pick.rid, pick.fid, v)} onClose={closePick} />
+      : <Picker f={pickField} v={pickRec.v[pickField.id]} users={users} at={pick.at} onChange={(v) => onSet(pick.rid, pick.fid, v)} onClose={closePick} />) : null}
+    {scan ? <ScanModal onCode={(code) => { onSet(scan.rid, scan.fid, code); setScan(null); }} onClose={() => setScan(null)} /> : null}
   </div>;
 }

@@ -63,6 +63,104 @@
 .bs-form .field-l .ic { vertical-align: -3px; color: var(--ink-3); }
 .bs-rec .field-l .ic { vertical-align: -3px; color: var(--ink-3); }
 .bs-filter .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* 筛选条：一行一个条件（2026-11-10 起可以有几个条件） */
+.bs-filter { flex-direction: column; align-items: stretch; gap: 6px; }
+.bs-frow { gap: 8px; }
+.bs-frow > .ic { flex: none; width: 16px; }
+.bs-and { width: 16px; flex: none; text-align: center; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.bs-fvals { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; width: auto; min-width: 160px; max-width: min(520px, 100%); height: auto; min-height: 30px; padding: 2px 8px; cursor: pointer; text-align: left; font: inherit; }
+/* 新的字段类型（2026-11-10）：进度条、评分、附件、系统字段、货币和百分号的前后缀 */
+.bs-grid td.auto { cursor: default; color: var(--ink-2); }
+.bs-grid.editable td.bs-cell.auto { cursor: default; }
+.bs-prog { display: inline-flex; align-items: center; gap: 8px; width: 100%; }
+.bs-prog-bar { flex: 1; min-width: 40px; height: 6px; border-radius: 3px; background: var(--chip-bg); overflow: hidden; }
+.bs-prog-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent-btn); }
+.bs-prog .num { flex: none; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--ink-2); }
+.bs-stars { display: inline-flex; gap: 1px; vertical-align: middle; color: var(--line-2); }
+.bs-stars .ic { width: 16px; height: 16px; }
+.bs-stars .on, .bs-stars .on .ic { color: var(--t-yellow, #d99a00); }
+.bs-stars .on .ic, .bs-stars .ic.on { fill: currentColor; }
+.bs-stars button { border: 0; background: none; padding: 1px; cursor: pointer; color: inherit; display: inline-flex; border-radius: 4px; }
+.bs-stars button:hover { background: var(--accent-soft); }
+.bs-stars button[disabled] { cursor: default; }
+.bs-att { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; max-width: 100%; }
+.bs-att img { width: 24px; height: 24px; border-radius: 4px; object-fit: cover; flex: none; background: var(--chip-bg); }
+.bs-att .chip { max-width: 120px; overflow: hidden; text-overflow: ellipsis; display: inline-block; line-height: 24px; }
+.bs-att i { font-style: normal; font-size: 12px; color: var(--ink-3); }
+.bs-atl { display: flex; flex-direction: column; gap: 6px; align-self: stretch; min-width: 0; }
+.bs-atl-row { gap: 8px; }
+.bs-atl-row img, .bs-atl-ic { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex: none; background: var(--chip-bg); display: grid; place-items: center; color: var(--ink-3); }
+.bs-atl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bs-atl-size { flex: none; font-size: 12px; }
+.bs-atl-add { align-self: flex-start; }
+.bs-attpop { padding: 10px; }
+.bs-attpop .btn.icon-only { width: 28px; height: 28px; }
+.bs-auto { min-height: 36px; display: flex; align-items: center; align-self: stretch; padding: 0 10px; border: 1px dashed var(--line-2); border-radius: 8px; color: var(--ink-2); }
+.bs-affix { align-self: stretch; gap: 8px; }
+.bs-affix .input { flex: 1; }
+.bs-gcover.img { padding: 0; overflow: hidden; background: var(--chip-bg); }
+.bs-gcover.img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 数据表页签（2026-11-10 起一份多维表格可以有几张表）：比视图页签高一级，颜色深一点 */
+.bs-tbar { display: flex; gap: 4px; padding: 6px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
+.bs-tab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; background: none; padding: 5px 10px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.bs-tab:hover { background: var(--accent-soft); }
+.bs-tab.on { background: var(--surface); border-color: var(--line-2); color: var(--ink); font-weight: 600; }
+.bs-tab.add { color: var(--ink-3); }
+.bs-tab .bs-more { width: 16px; height: 16px; display: inline-grid; place-items: center; color: var(--ink-3); }
+/* 流程、关联、群组、地理位置、条码、签字、按钮、公式 */
+.bs-stage { display: inline-flex; align-items: center; gap: 6px; }
+.bs-stage i { font-style: normal; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.bs-steps { display: flex; flex-wrap: wrap; gap: 6px; align-self: stretch; }
+/* 当前这一步的底色是选项的颜色（.c-*），所以底色只给不是当前的 */
+.bs-step { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 4px; border: 1px solid var(--line-2); border-radius: 14px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.bs-step:not(.on) { background: var(--surface); color: var(--ink-2); }
+.bs-step i { font-style: normal; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--chip-bg); font-size: 11px; }
+.bs-step i .ic { width: 12px; height: 12px; }
+.bs-step.done { color: var(--ink); border-color: var(--line-2); }
+.bs-step.done i { background: var(--accent-soft); color: var(--accent); }
+.bs-step.on { border-color: transparent; font-weight: 600; }
+.bs-step.on i { background: rgba(127, 127, 127, .18); }
+.bs-step[disabled] { cursor: default; }
+.bs-pickf { gap: 6px; align-self: stretch; }
+.bs-pickf .bs-multi { flex-wrap: wrap; }
+.bs-loc { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
+.bs-loc .ic { flex: none; }
+.bs-locf { display: flex; flex-direction: column; gap: 4px; align-self: stretch; }
+.bs-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .02em; }
+.bs-scan { width: 100%; max-height: 50vh; border-radius: 10px; background: #000; }
+.bs-sign { height: 26px; max-width: 100%; border-radius: 4px; background: #fff; border: 1px solid var(--line); vertical-align: middle; }
+.bs-signf { gap: 8px; align-self: stretch; }
+.bs-signf .bs-sign { height: 56px; }
+.bs-signpad { width: 100%; aspect-ratio: 12 / 5; border: 1px dashed var(--line-2); border-radius: 10px; background: #fff; touch-action: none; cursor: crosshair; }
+.bs-btnf { height: 26px; }
+.bs-err { color: var(--crit-ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.bs-expr { height: auto; min-height: 72px; padding: 8px 10px; align-self: stretch; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; resize: vertical; }
+.bs-refs { display: flex; flex-wrap: wrap; gap: 6px; }
+.bs-refs .chip { border: 0; cursor: pointer; font: inherit; font-size: 12px; }
+.bs-refs .chip:hover { filter: brightness(.96); }
+.bs-funcs summary { cursor: pointer; font-size: 12.5px; color: var(--ink-3); margin-bottom: 6px; }
+/* 按 Lark 做的几样（2026-11-10）：查找条件、流程每个阶段的设置和流转、按钮的动作 */
+.bs-conds, .bs-stages, .bs-acts, .bs-assigns { display: flex; flex-direction: column; gap: 8px; align-self: stretch; min-width: 0; }
+.bs-cond { gap: 6px; }
+.bs-cond .select { flex: 1 1 110px; height: 32px; }
+.bs-cond .input { flex: 1 1 90px; height: 32px; }
+.bs-stagec, .bs-act { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.bs-stagec .select, .bs-act .select, .bs-assign .select { height: 30px; }
+.bs-stagec .bs-fvals, .bs-act .bs-fvals { max-width: 100%; align-self: stretch; background: var(--surface); }
+.bs-act > .input { align-self: stretch; background: var(--surface); }
+.bs-assign { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); }
+.bs-assign .row { gap: 6px; }
+.bs-assign .select { flex: 0 1 auto; max-width: 100%; }
+.bs-stagep { display: flex; flex-direction: column; gap: 6px; align-self: stretch; }
+.bs-stagep .fine { margin: 0; }
+.bs-lack { color: var(--warn-ink); }
+.bs-next { align-self: flex-start; }
+.bs-todo { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-btn); margin-left: 6px; vertical-align: 2px; }
+.bs-gchip { border: 0; cursor: pointer; font: inherit; font-size: 12px; }
+.bs-gchip:hover { filter: brightness(.96); text-decoration: underline; }
+/* 导入：读文件时盖在内容上、导入结果 */
+.bs-busy { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--bg); color: var(--ink-3); font-size: 13px; }
+.bs-notes { margin: 0; padding-left: 18px; list-style: disc; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
 @media (max-width: 600px) {
   .bs .dtool { padding: 6px 10px; gap: 4px; }
   .bs .dtool .tt .lbl { display: none; }
@@ -71,6 +169,7 @@
   .bs-views { padding: 4px 8px 0; }
   .bs-filter { padding: 6px 10px; gap: 6px; }
   .bs-filter .input { width: 100px; }
+  .bs-fvals { min-width: 100px; }
   .bs-gal { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding: 12px; gap: 10px; }
   .bs-kb { padding: 12px; gap: 10px; }
   .bs-col { width: 220px; }

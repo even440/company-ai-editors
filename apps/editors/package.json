@@ -34,6 +34,7 @@
     "@tiptap/static-renderer": "^3.31.4",
     "@univerjs/preset-sheets-core": "^1.0.3",
     "@univerjs/presets": "^1.0.3",
+    "@zxing/library": "0.23.0",
     "docx": "^9.9.0",
     "jszip": "^3.10.2",
     "mammoth": "^1.13.0",

@@ -12,6 +12,7 @@
 | AntV X6 及插件 | MIT | 流程图 |
 | simple-mind-map | MIT | 思维笔记 |
 | TanStack Table | MIT | 多维表格的网格 |
+| ZXing（@zxing/library） | Apache-2.0 | 多维表格条码字段的扫码（浏览器自己不会认条码时用，点了扫码才加载） |
 | PDF.js（pdfjs-dist） | Apache-2.0 | PDF 预览 |
 | SheetJS（xlsx 0.18.5） | Apache-2.0 | 表格的导入导出 |
 | mammoth | BSD-2-Clause | Word 导入 |

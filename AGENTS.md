@@ -9,7 +9,7 @@
 - `apps/editors/src/<格式>/`：这种格式的组件、内容格式说明 `README.md`、导入导出。
 - `apps/editors/src/shell/`：会话（`session.tsx`：`mount`、`useSession`、`useHost`、`useTheme`）、组件（`ui.tsx`：`Icon`、`TT`、`Toolbar`、`Select`、`Toggle`、`Field`、`Modal`、`Confirm`、`toast`、`Toaster`）、图标（`icons.ts`，和平台共用的 16×16 描边图标）、样式（`base.css` 是平台的全套样式，`shell.css` 是编辑器外壳）。
 - `apps/slides`：PPTist 的 fork（Vue 3）。改动尽量集中在 `src/cai/` 和少数几个接入点，每处改动在 `apps/slides/CHANGES.md` 里记一行，方便以后合并上游。
-- `tools/mock-host.mjs`：假宿主，不用平台也能开发；`tools/shots.mjs`：无界面 Chrome 截图。
+- `tools/mock-host.mjs`：假宿主，不用平台也能开发；`tools/shots.mjs`：无界面 Chrome 截图；`tools/check-base.mjs`：多维表格的自测。
 
 ## 页面怎么写
 
@@ -20,8 +20,8 @@
 5. `s.doc.importFile` 有值时表示这份内容刚从文件导入、还没转换：下载它（`s.client.assetUrl(id)`）、转换成本格式、保存，再调 `s.client.imported()`，并 `s.send({ type: 'imported', title })`。
 6. 图片等附件用 `s.client.upload(file)`，得到带令牌的地址。
 7. 标题由宿主显示和修改，编辑器不画标题；宿主发 `title` 消息时同步到自己的状态（幻灯片等会把标题写进内容的格式需要）。
-8. 界面文字跟宿主的界面语言（地址参数 `ui`，`shell/i18n.ts` 的 `lang` / `pick`；外壳自己的字在那里的 `ST`）：问卷已经是五种语言（`survey/i18n.ts`，2026-11-04 巴西同事用葡语界面时问卷全是中文），新写的界面文字照它的做法写成五种语言，别的格式还是中文、以后逐个改；文字不写进 CSS 的 `content`（用 `attr(data-…)`）。类名沿用 `base.css`（`.btn`、`.tt`、`.dtool`、`.input`、`.select`、`.chip`、`.card`、`.tbl`、`.modal` 等；原型里各格式的样式 `.sh-*`、`.bs-*`、`.sv-*`、`.mn-*`、`.wb-*`、`.fl-*`、`.fv-*` 也都在）。深色主题靠变量，不写死颜色。手机宽度（390px）也要能用。
-9. 注释用中文，说明「为什么」。不新增依赖；确实需要时在报告里说明，不要自己 `npm install`。
+8. 界面文字跟宿主的界面语言（地址参数 `ui`，`shell/i18n.ts` 的 `lang` / `pick`；外壳自己的字在那里的 `ST`）：问卷已经是五种语言（`survey/i18n.ts`，2026-11-04 巴西同事用葡语界面时问卷全是中文），新写的界面文字照它的做法写成五种语言，别的格式还是中文、以后逐个改（多维表格 2026-11-10 新加的字段类型、数据表、筛选、导入在 `base/i18n.ts`，更早的还是组件里的中文）；文字不写进 CSS 的 `content`（用 `attr(data-…)`）。类名沿用 `base.css`（`.btn`、`.tt`、`.dtool`、`.input`、`.select`、`.chip`、`.card`、`.tbl`、`.modal` 等；原型里各格式的样式 `.sh-*`、`.bs-*`、`.sv-*`、`.mn-*`、`.wb-*`、`.fl-*`、`.fv-*` 也都在）。深色主题靠变量，不写死颜色。手机宽度（390px）也要能用。
+9. 注释用中文，说明「为什么」。不新增依赖；确实需要时在报告里说明，不要自己 `npm install`。（2026-11-10 用户同意加了 `@zxing/library`：多维表格的条码字段要在 iPhone、Windows 上也能扫码。）
 10. 评论（现在是 doc、sheet）：`mount(…, { comments: true })` 让 `ready` 带上能力标记；宿主发过 `comments`（哪怕是空数组）才显示评论入口。评论绝不能改内容（不写样式标记、不改格子、不调保存），只读的人也要能评论。锚点格式见 `protocol.ts` 的 `CommentAnchor`，各编辑器的做法见各自的 `README.md`。
 
 ## 内容格式（content 的 JSON）
@@ -31,7 +31,7 @@
 | doc | Tiptap JSON `{ type: 'doc', content: [...] }`，节点集合见 `src/doc/schema.ts` | 各节点文字按段落拼 |
 | sheet | Univer 的 `IWorkbookData`（`univerAPI.getActiveWorkbook().save()` 的结果） | 每个工作表每行的格子值 |
 | slides | PPTist 的 `{ title, theme, slides, viewportSize, viewportRatio }` | 每页的文字元素 |
-| base | `{ fields: Field[], records: { id, v: Record<fieldId, value> }[], views: View[] }`；字段类型 text / select / multi / user / date / number / check / url | 每条记录的值按字段拼 |
+| base | `{ tid, name, fields: Field[], records: { id, v: Record<fieldId, value>, ct, ut, cb, ub }[], views: View[], tables?: 第二张起的数据表[] }`；字段类型 29 种（文本、单选、多选、人员、群组、日期、附件、数字、复选框、链接、公式、查找引用、流程、按钮、自动编号、电话、邮箱、地理位置、条码、签字、进度、货币、评分、双向 / 单向关联、创建人、修改人、创建时间、修改时间），见 `src/base/README.md` | 每条记录的值按字段拼；几张表时每张前面一行【表名】 |
 | survey | `{ desc, qs: Question[], set: { anon, once, due } }`；答卷不在 content 里，走 `responses` 接口 | 题目和选项 |
 | mind | `{ root: 节点, layout, theme, mode: 'map' \| 'outline' }`，节点是 simple-mind-map 的 `{ data: { text, … }, children }` | 所有节点的文字 |
 | board | `{ elements, appState: { viewBackgroundColor, … }, files }`（Excalidraw 的序列化结果，appState 只留和内容有关的字段） | 文字元素 |
@@ -43,5 +43,6 @@
 ## 验证
 
 - `npm run typecheck`
-- `npm run build:one -- <格式>`（只构建一个入口到 `dist-check/`，验证完删掉）
+- `npm run build:one -w apps/editors -- <格式>`（只构建一个入口到 `dist-check/`，验证完删掉）
+- 多维表格不碰界面的那部分（内容模型、公式、关联和查找引用、导入 Lark）：`node --experimental-strip-types tools/check-base.mjs`（Node 22.15 以上），最后一行是「全部通过」
 - `node tools/mock-host.mjs` 起假宿主（5180 端口），再 `npm run dev`（5174），打开 http://localhost:5180/host.html?kind=<格式> 就能在假宿主里用编辑器；`node tools/shots.mjs <截图目录> <计划.json>` 截图检查。

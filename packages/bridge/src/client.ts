@@ -1,5 +1,5 @@
 /** 调宿主接口：所有请求带编辑令牌。跨域部署时宿主要允许这个来源 */
-import type { DirectoryUser, EditorDoc, EditorFile, PresenceUser, SaveBody, SaveConflict, SaveResult, SurveyResponse } from './protocol';
+import type { ChatGroup, DirectoryUser, EditorDoc, EditorFile, PresenceUser, SaveBody, SaveConflict, SaveResult, SurveyResponse } from './protocol';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public data?: unknown) { super(message); }
@@ -43,6 +43,10 @@ export class EditorClient {
   imported(): Promise<{ ok: true }> { return this.request('POST', '/doc/imported'); }
   presence(editing: boolean, leave = false): Promise<{ present: PresenceUser[] }> { return this.request('POST', '/presence', { editing, leave }, { keepalive: leave }); }
   directory(): Promise<{ users: DirectoryUser[] }> { return this.request('GET', '/directory'); }
+  /** 当前成员在的群（多维表格的群组字段）。宿主没有这个接口（旧的宿主、别的宿主）时当作一个群都没有 */
+  async groups(): Promise<{ groups: ChatGroup[] }> {
+    try { return await this.request('GET', '/groups'); } catch (e) { if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return { groups: [] }; throw e; }
+  }
   /**
    * 传图片、附件，得到带令牌的地址。先试直传对象存储（2026-10-27：深圳同事导入一份几百张图的 Word，图片一张张经美国的服务器传了 4 分钟；
    * 宿主给签名地址，浏览器直接 PUT 到香港的桶，再登记），宿主没配对象存储时（开发）照它说的交给 …/local；
@@ -80,6 +84,11 @@ export class EditorClient {
       return await this.request<EditorFile>('POST', `/uploads/${id}/complete`, {});
     } catch (e) { return fallback(e); }
   }
+  /**
+   * 多维表格的按钮「发消息」：以当前成员的名义给几个成员发通知、往几个群里发一条（要他自己在那个群里）。
+   * 返回发到了几个人、几个群，skipped 是没发成的（不在群里、不是同事…）
+   */
+  notify(body: { users: string[]; groups: string[]; text: string }): Promise<{ users: number; groups: number; skipped: number }> { return this.request('POST', '/notify', body); }
   responses(): Promise<{ responses: SurveyResponse[] }> { return this.request('GET', '/responses'); }
   respond(answers: Record<string, unknown>): Promise<{ id: string; count: number }> { return this.request('POST', '/responses', { answers }); }
   /** 问卷的收集状态 */

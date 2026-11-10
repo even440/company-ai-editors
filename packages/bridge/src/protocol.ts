@@ -12,6 +12,11 @@ export const KIND_NAME: Record<Kind, string> = { doc: '文档', sheet: '表格',
 export interface EditorUser { id: string; name: string; color: string }
 /** 通讯录里的一个人：人员字段、@提到成员用 */
 export interface DirectoryUser { id: string; name: string; dept: string; tint: string }
+/**
+ * 多维表格的群组字段用的一个群。members 是人数；mine 是当前成员在不在这个群里：
+ * 自己在的能选、能点开；这份内容里已经填着、自己不在的群只给名字（mine 为 false），不带 mine 的（旧的宿主）当作在
+ */
+export interface ChatGroup { id: string; name: string; members: number; mine?: boolean }
 /** 附在内容上的文件（上传的文件本身，或导入前的源文件） */
 export interface EditorFile { id: string; name: string; size: number; mime: string; url: string }
 
@@ -126,6 +131,8 @@ export type EditorToHost =
   | { type: 'present'; users: PresenceUser[] }
   | { type: 'error'; message: string }
   | { type: 'navigate'; docId: string }
+  /** 打开一个会话（多维表格里点了群组字段的群）：宿主跳到消息里的这个群；不认的宿主什么都不做 */
+  | { type: 'open-chat'; convId: string }
   | { type: 'request'; what: 'share' | 'ai' | 'history' | 'close' }
   | { type: 'exported'; name: string }
   | { type: 'imported'; title: string }
@@ -194,5 +201,7 @@ export function importKindOf(name: string): Kind | null {
   if (['xlsx', 'xls', 'csv'].includes(ext)) return 'sheet';
   if (['pptx'].includes(ext)) return 'slides';
   if (['xmind', 'opml'].includes(ext)) return 'mind';
+  // Lark / 飞书多维表格的导出文件
+  if (ext === 'base') return 'base';
   return null;
 }

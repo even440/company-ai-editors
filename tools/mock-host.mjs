@@ -119,6 +119,10 @@ http.createServer(async (req, res) => {
     if (p === '/doc/imported') { doc.importFile = null; json(res, 200, { ok: true }); return; }
     if (p === '/presence') { json(res, 200, { present: [{ id: USERS[1].id, name: USERS[1].name, editing: true }] }); return; }
     if (p === '/directory') { json(res, 200, { users: USERS }); return; }
+    // 群名单：自己在的三个，外加一个这份内容里可能填着、自己不在的（只给名字）
+    if (p === '/groups') { json(res, 200, { groups: [{ id: 'g_sales', name: '销售部', members: 12, mine: true }, { id: 'g_ops', name: '货柜跟踪群', members: 7, mine: true }, { id: 'g_all', name: '全员群', members: 86, mine: true }, { id: 'g_fin', name: '财务群', members: 5, mine: false }] }); return; }
+    // 按钮「发消息」：不真发，记在日志里
+    if (p === '/notify' && req.method === 'POST') { const b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); console.log(`[发消息] ${doc.id} 成员=${(b.users || []).join(',')} 群=${(b.groups || []).join(',')} 内容=${String(b.text).slice(0, 80)}`); json(res, 200, { users: (b.users || []).length, groups: (b.groups || []).filter((g) => g !== 'g_fin').length, skipped: (b.groups || []).filter((g) => g === 'g_fin').length }); return; }
     if (p === '/asset' && req.method === 'POST') {
       const body = await readBody(req);
       const fd = await new Response(body, { headers: { 'content-type': req.headers['content-type'] } }).formData();

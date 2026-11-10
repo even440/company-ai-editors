@@ -135,6 +135,42 @@ export const SAMPLES = {
     ],
     views: [{ id: 'v1', name: '表格视图', type: 'grid' }, { id: 'v2', name: '按阶段', type: 'kanban', group: 'f2' }, { id: 'v3', name: '画廊', type: 'gallery' }, { id: 'v4', name: '到期日历', type: 'calendar' }, { id: 'v5', name: '录入表单', type: 'form' }],
   } },
+  // 2026-11-10 加的字段类型都用上的一份：三张数据表（货柜、清关行用双向关联连着，流转记录由按钮往里加），带公式、两种查找引用（顺着关联、按条件）、
+  // 有流转条件的流程、会改记录 / 新增记录 / 发消息的按钮、群组、地理位置、条码和系统字段；视图带两个筛选条件
+  'demo-base-types': { kind: 'base', title: '货柜跟踪', content: {
+    tid: 't1', name: '货柜',
+    fields: [
+      { id: 'f1', name: '清单编号', type: 'text' }, { id: 'f2', name: '标号', type: 'autonum', next: 4 }, { id: 'f3', name: '进度', type: 'stage', opts: [['装柜', 'gray'], ['海运中', 'blue'], ['清关', 'orange'], ['已签收', 'green'], ['暂停', 'red']],
+        flow: { strict: true, first: true, steps: { 装柜: { show: ['f1', 'f8'], need: [{ fid: 'f8', op: 'nempty', val: '' }] }, 海运中: { show: ['f9', 'f23'], need: [{ fid: 'f9', op: 'nempty', val: '' }] }, 清关: { show: ['f4', 'f12'], need: [{ fid: 'f4', op: 'nempty', val: '' }] }, 已签收: { end: 'done' }, 暂停: { end: 'stop' } } } },
+      { id: 'f4', name: '清关费', type: 'currency', cur: 'BRL', dec: 2 }, { id: 'f17', name: '含税', type: 'formula', expr: 'ROUND({清关费} * 1.12, 2)', dec: 2 }, { id: 'f18', name: '提醒', type: 'formula', expr: 'IF({进度} = "已签收", "完成", IF({预计到港} < "2026-10-01", "该到了", "在途"))' },
+      { id: 'f19', name: '清关行', type: 'duplex', to: 't2', back: 'g4' }, { id: 'f20', name: '清关行电话', type: 'lookup', via: 'f19', pick: 'g2' },
+      { id: 'f5', name: '立方', type: 'number', dec: 2 }, { id: 'f6', name: '完成度', type: 'progress' }, { id: 'f7', name: '清关行评分', type: 'rating' },
+      { id: 'f8', name: '装货时间', type: 'date', time: true }, { id: 'f9', name: '预计到港', type: 'date' }, { id: 'f21', name: '通知群', type: 'group' }, { id: 'f22', name: '仓库', type: 'location' }, { id: 'f23', name: '提单条码', type: 'barcode' },
+      { id: 'f24', name: '签收', type: 'sign' }, { id: 'f25', name: '跟踪', type: 'button', label: '查物流', acts: [{ do: 'open', href: 'https://example.com/track/{清单编号}' }] },
+      { id: 'f26', name: '下一步', type: 'button', label: '进入下一阶段', acts: [{ do: 'set', set: [{ fid: 'f3', how: 'next' }] }, { do: 'add', table: 't3', set: [{ fid: 'h1', how: 'copy', from: 'f1' }, { fid: 'h2', how: 'copy', from: 'f3' }, { fid: 'h3', how: 'now' }] }, { do: 'msg', fields: ['f21'], text: '{清单编号} 进入「{进度}」' }] },
+      { id: 'f27', name: '流转次数', type: 'lookup', from: 't3', agg: 'count', where: [{ fid: 'h1', op: 'eq', src: 'f1' }] },
+      { id: 'f10', name: '联系电话', type: 'phone' }, { id: 'f11', name: '联系邮箱', type: 'email' }, { id: 'f12', name: '报关单', type: 'attach' },
+      { id: 'f13', name: '创建时间', type: 'created' }, { id: 'f14', name: '创建人', type: 'creator' }, { id: 'f15', name: '修改时间', type: 'updated' }, { id: 'f16', name: '修改人', type: 'editor' },
+    ],
+    records: [
+      { id: 'r1', v: { f1: 'HG-1001', f2: 1, f3: '清关', f4: 25600, f19: ['c1'], f5: 68.5, f6: 60, f7: 4, f8: '2026-08-13 14:30', f9: '2026-10-09', f21: ['g_ops'], f22: { addr: 'Porto de Santos', lat: -23.9608, lng: -46.3336 }, f23: 'BL2026100001', f10: '+55 11 99999-0000', f11: 'ops@example.com' }, ct: 1794245578000, ut: 1794245826000, cb: 'ln', ub: 'wl' },
+      { id: 'r2', v: { f1: 'HG-1002', f2: 2, f3: '海运中', f4: 86400.5, f19: ['c2'], f5: 68, f6: 35, f7: 5, f8: '2026-08-06 09:00', f9: '2026-09-08', f22: 'Itajaí' }, ct: 1794245578000, ut: 1794245578000, cb: 'zs', ub: 'zs' },
+      { id: 'r3', v: { f1: 'HG-1003', f2: 3, f3: '已签收', f19: ['c1'], f5: 70.5, f6: 100, f9: '2026-08-20' } },
+    ],
+    views: [{ id: 'v1', name: '全流程', type: 'grid' }, { id: 'v2', name: '未签收', type: 'grid', filters: [{ fid: 'f3', op: 'eq', val: '海运中', vals: ['海运中', '清关'] }, { fid: 'f4', op: 'nempty', val: '' }], sort: { fid: 'f9', dir: 'asc' } }, { id: 'v3', name: '按进度', type: 'kanban', group: 'f3' }, { id: 'v4', name: '画廊', type: 'gallery' }, { id: 'v5', name: '录入', type: 'form' }],
+    tables: [{ id: 't2', name: '清关行',
+      fields: [{ id: 'g1', name: '名称', type: 'text' }, { id: 'g2', name: '电话', type: 'phone' }, { id: 'g3', name: '评分', type: 'rating' }, { id: 'g4', name: '货柜', type: 'duplex', to: 't1', back: 'f19' },
+        { id: 'g5', name: '货柜数', type: 'lookup', via: 'g4', agg: 'count' }, { id: 'g6', name: '清关费合计', type: 'lookup', via: 'g4', pick: 'f4', agg: 'sum' }],
+      records: [{ id: 'c1', v: { g1: '华通报关', g2: '+55 13 3333-1000', g3: 5, g4: ['r1', 'r3'] } }, { id: 'c2', v: { g1: '远洋报关', g2: '+55 21 4444-2000', g3: 4, g4: ['r2'] } }, { id: 'c3', v: { g1: '顺达报关', g3: 3 } }],
+      views: [{ id: 'w1', name: '表格视图', type: 'grid' }],
+    }, { id: 't3', name: '流转记录',
+      fields: [{ id: 'h1', name: '清单编号', type: 'text' }, { id: 'h2', name: '进入的阶段', type: 'text' }, { id: 'h3', name: '时间', type: 'date', time: true }],
+      records: [{ id: 'h01', v: { h1: 'HG-1001', h2: '海运中', h3: '2026-08-20 10:00' } }, { id: 'h02', v: { h1: 'HG-1001', h2: '清关', h3: '2026-10-10 09:30' } }],
+      views: [{ id: 'x1', name: '表格视图', type: 'grid' }],
+    }],
+  } },
+  // 导入 Lark / 飞书导出的 .base：samples/sample.base 是照真实导出文件的结构造的（两张表互相关联，第一张分两页），内容是编的
+  'demo-base-import': { kind: 'base', title: '示例货柜跟踪', content: {}, sampleImport: 'sample.base' },
   'demo-base-empty': { kind: 'base', title: '未命名多维表格', content: {} },
   'demo-survey': { kind: 'survey', title: '国庆后办公安排调研', content: {
     desc: '用 1 分钟告诉人事你对假期后办公安排的想法，10 月 15 日截止。',
