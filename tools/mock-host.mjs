@@ -5,6 +5,8 @@
  * 令牌格式：<内容编号>:<权限>，权限 owner | edit | read | respond。
  * 评论：编辑器 ready 里带 comments: true 时，宿主页把评论列表发过去；comment-new 直接建一条（内容是固定文字），
  * 列表存在宿主页的 localStorage 里（按内容编号），右边可以解决、定位、删除。
+ * 想试导入手边的某个文件：IMPORT_FILE=/路径/文件.docx node tools/mock-host.mjs，内容编号是 local-import（格式按扩展名：docx md txt html → 文档）。
+ * AI 识别目录（POST …/outline）：没有模型，按编号的写法猜（返回里带 mock: true）。
  */
 import fs from 'node:fs';
 import http from 'node:http';
@@ -31,6 +33,29 @@ if (fs.existsSync(samplesDir)) for (const name of fs.readdirSync(samplesDir)) {
   const buf = fs.readFileSync(path.join(samplesDir, name)), ext = name.split('.').pop().toLowerCase();
   const mime = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', txt: 'text/plain', md: 'text/markdown', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv', xmind: 'application/octet-stream', opml: 'text/xml' }[ext] ?? 'application/octet-stream';
   assets.set('sample-' + name, { name, mime, buf });
+}
+// 手边的文件：IMPORT_FILE 指到它，登记成一份刚导入、还没转换的内容
+if (process.env.IMPORT_FILE) {
+  const file = process.env.IMPORT_FILE, name = path.basename(file), ext = name.split('.').pop().toLowerCase(), buf = fs.readFileSync(file);
+  const kind = { xlsx: 'sheet', csv: 'sheet', pptx: 'slides', base: 'base', xmind: 'mind', opml: 'mind' }[ext] ?? 'doc';
+  assets.set('local-import', { name, mime: 'application/octet-stream', buf });
+  docs.set('local-import', { id: 'local-import', kind, title: name, content: {}, version: 1, plain: '', updatedAt: new Date().toISOString(), collecting: false, importFile: { id: 'local-import', name, size: buf.length, mime: 'application/octet-stream', url: `http://localhost:${PORT}/api/v1/editor/asset/local-import?token=local-import:read` } });
+}
+/** AI 识别目录的替身：同一种编号写法同一级，没见过的写法排在上一个标题的下一级；没有编号的只认整段加粗的短行 */
+const OUTLINE_KINDS = [/^第\s*[一二三四五六七八九十百\d]+\s*[章篇部]/, /^第\s*[一二三四五六七八九十百\d]+\s*节/, /^[一二三四五六七八九十百]+\s*[、.．]/, /^[（(]\s*[一二三四五六七八九十百]+\s*[）)]/, /^\d+(?:[.．]\d+){2}(?![.．]?\d)/, /^\d+[.．]\d+(?![.．]?\d)/, /^\d+\s*[、.．](?!\d)/];
+function guessOutline(lines) {
+  const stack = [], out = [];
+  for (const l of lines) {
+    const t = String(l.t ?? '').trim(), had = /(?:^|,)h([1-6])(?:,|$)/.exec(l.f ?? '');
+    if (had) { stack.length = Math.min(stack.length, Number(had[1]) - 1); while (stack.length < Number(had[1])) stack.push(''); continue; }
+    if (!t || t.length > 40 || /[。；;，,！!？?]$/.test(t)) continue;
+    const n = OUTLINE_KINDS.findIndex((re) => re.test(t)), kind = n >= 0 ? 'n' + n : String(l.f ?? '').split(',').includes('b') && t.length <= 30 ? 'b' : '';
+    if (!kind) continue;
+    const at = stack.indexOf(kind), level = at >= 0 ? at + 1 : Math.min(6, stack.length + 1);
+    stack.length = level - 1; stack.push(kind);
+    out.push({ i: l.i, level });
+  }
+  return out;
 }
 for (const d of docs.values()) { if (d.sampleFile && assets.has('sample-' + d.sampleFile)) d.fileAsset = 'sample-' + d.sampleFile; if (d.sampleImport && assets.has('sample-' + d.sampleImport)) d.importFile = { id: 'sample-' + d.sampleImport, name: d.sampleImport, size: assets.get('sample-' + d.sampleImport).buf.length, mime: assets.get('sample-' + d.sampleImport).mime, url: `http://localhost:${PORT}/api/v1/editor/asset/sample-${d.sampleImport}?token=${d.id}:read` }; }
 
@@ -123,6 +148,12 @@ http.createServer(async (req, res) => {
     if (p === '/groups') { json(res, 200, { groups: [{ id: 'g_sales', name: '销售部', members: 12, mine: true }, { id: 'g_ops', name: '货柜跟踪群', members: 7, mine: true }, { id: 'g_all', name: '全员群', members: 86, mine: true }, { id: 'g_fin', name: '财务群', members: 5, mine: false }] }); return; }
     // 按钮「发消息」：不真发，记在日志里
     if (p === '/notify' && req.method === 'POST') { const b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); console.log(`[发消息] ${doc.id} 成员=${(b.users || []).join(',')} 群=${(b.groups || []).join(',')} 内容=${String(b.text).slice(0, 80)}`); json(res, 200, { users: (b.users || []).length, groups: (b.groups || []).filter((g) => g !== 'g_fin').length, skipped: (b.groups || []).filter((g) => g === 'g_fin').length }); return; }
+    if (p === '/outline' && req.method === 'POST') {
+      if (readonly) { json(res, 403, { error: '只读' }); return; }
+      const b = JSON.parse((await readBody(req)).toString('utf8') || '{}'), items = guessOutline(Array.isArray(b.lines) ? b.lines : []);
+      console.log(`[识别目录] ${doc.id} 交来 ${(b.lines || []).length} 行、前面的标题 ${(b.before || []).length} 个 → 认出 ${items.length} 个`);
+      json(res, 200, { items, mock: true }); return;
+    }
     if (p === '/asset' && req.method === 'POST') {
       const body = await readBody(req);
       const fd = await new Response(body, { headers: { 'content-type': req.headers['content-type'] } }).formData();

@@ -4,12 +4,14 @@
  * 宽的时候固定在正文左边，窄的时候（手机、AI 助手右边那块）是左下角一个按钮，点了从左边滑出来、选了就收起。
  * 开着还是关着按人记在本机（localStorage），没设过时宽屏、有三个以上标题才默认打开。
  * 点了跳过去（jump.ts）：跳过去以后几秒内有图片加载出来（懒加载的图没写宽高时会把正文往下挤）就重新对准那个标题，自己动了滚动就不再管。
- * 标题一到六级（2026-10-27 用户说文档会用到五级、六级标题），按级别缩进
+ * 标题一到六级（2026-10-27 用户说文档会用到五级、六级标题），按级别缩进。
+ * AI 识别目录（2026-11-10，aioutline.tsx）：能改的人在目录头上有「AI 识别目录」；一个标题都没有时目录也打得开（只对能改的人），里面说明怎么才有目录
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';
 import { Icon, cx } from '../shell/ui';
+import { T } from './i18n';
 import { jumpToPos } from './jump';
 
 export interface TocItem { pos: number; level: number; text: string; key: string }
@@ -30,17 +32,19 @@ export function tocOf(doc: PmNode): TocItem[] {
 /**
  * 目录跟着正文变：改动停下来一会儿再算，几百个标题的长文档打字时不卡。
  * 标题（级别、文字）没变时不换数组、目录不重画，只把各项的位置改成新的（在标题前面打字，后面每个标题的位置都会挪；
- * 以前每 0.4 秒整个目录和编辑器重画一遍，2026-10-30 大文档打字卡）。目录里用到位置的地方（当前一节、点了跳过去）都是用的时候现读 pos
+ * 以前每 0.4 秒整个目录和编辑器重画一遍，2026-10-30 大文档打字卡）。目录里用到位置的地方（当前一节、点了跳过去）都是用的时候现读 pos。
+ * body 是正文有没有三块以上：一个标题都没有时，要不要给目录的入口（AI 识别目录）看它，空白的新文档不给
  */
-export function useToc(editor: Editor | null): TocItem[] {
-  const [items, setItems] = useState<TocItem[]>([]);
+export function useToc(editor: Editor | null): { items: TocItem[]; body: boolean } {
+  const [items, setItems] = useState<TocItem[]>([]), [body, setBody] = useState(false);
   useEffect(() => {
-    if (!editor) { setItems([]); return; }
+    if (!editor) { setItems([]); setBody(false); return; }
     let t = 0;
     const calc = () => {
       t = 0;
       if (editor.isDestroyed) return;
       const next = tocOf(editor.state.doc);
+      setBody(editor.state.doc.childCount >= 3);
       setItems((cur) => {
         if (cur.length !== next.length || cur.some((it, i) => it.key !== next[i].key)) return next;
         cur.forEach((it, i) => { it.pos = next[i].pos; });
@@ -52,7 +56,7 @@ export function useToc(editor: Editor | null): TocItem[] {
     editor.on('update', later);
     return () => { editor.off('update', later); window.clearTimeout(t); };
   }, [editor]);
-  return items;
+  return { items, body };
 }
 
 const STORE = 'cai-doc-toc';
@@ -73,14 +77,22 @@ export function useWide(min: number): boolean {
   return wide;
 }
 
-/** 目录开着没有：宽屏按本人的设置（没设过时三个以上标题就开），窄屏每次打开都是关着的 */
-export function useTocOpen(count: number, wide: boolean): [boolean, (on: boolean) => void] {
+/**
+ * 目录开着没有：宽屏按本人的设置（没设过时三个以上标题就开），窄屏每次打开都是关着的。
+ * 一个标题都没有时，只有 allowEmpty（能改、能用 AI 识别目录）才打得开，而且只管这一次、不记到本机：
+ * 不然开过目录的人每新建一篇空文档都顶着一个空目录。这样打开以后有了标题（AI 认出来的、自己设的）接着开着
+ */
+export function useTocOpen(count: number, wide: boolean, allowEmpty = false): [boolean, (on: boolean) => void] {
   const [mine, setMine] = useState<boolean | null>(readPref);
-  const [slide, setSlide] = useState(false);
-  const open = wide ? (mine ?? count >= 3) : slide;
-  const set = useCallback((on: boolean) => { if (wide) { setMine(on); savePref(on); } else setSlide(on); }, [wide]);
+  const [slide, setSlide] = useState(false), [once, setOnce] = useState(false);
+  const open = wide ? (count ? once || (mine ?? count >= 3) : once) : slide;
+  const set = useCallback((on: boolean) => {
+    if (!wide) { setSlide(on); return; }
+    setOnce(on && !count);
+    if (count) { setMine(on); savePref(on); }
+  }, [wide, count]);
   useEffect(() => { if (wide) setSlide(false); }, [wide]);
-  return [open && count > 0, set];
+  return [open && (count > 0 || allowEmpty), set];
 }
 
 /** 正文滚动容器里某个位置的标题现在离容器顶上多远 */
@@ -89,7 +101,8 @@ function topOf(editor: Editor, box: HTMLElement, pos: number): number | null {
   return dom instanceof HTMLElement ? dom.getBoundingClientRect().top - box.getBoundingClientRect().top : null;
 }
 
-export function Outline({ editor, items, box, wide, onClose }: { editor: Editor; items: TocItem[]; box: RefObject<HTMLDivElement | null>; wide: boolean; onClose: () => void }) {
+/** ai：「AI 识别目录」（能改的人才有）：busy 是进行到哪了，run 开始 */
+export function Outline({ editor, items, box, wide, ai, onClose }: { editor: Editor; items: TocItem[]; box: RefObject<HTMLDivElement | null>; wide: boolean; ai?: { busy: string | null; run: () => void } | null; onClose: () => void }) {
   const [cur, setCur] = useState(-1), [folded, setFolded] = useState<Set<string>>(() => new Set());
   const list = useRef<HTMLDivElement>(null);
 
@@ -156,7 +169,9 @@ export function Outline({ editor, items, box, wide, onClose }: { editor: Editor;
           </> : null}
           <button type="button" className="tt toc-x" onClick={onClose} aria-label="关闭目录" title="关闭目录"><Icon name="x" /></button>
         </div>
+        {ai ? <div className="toc-ai"><button type="button" className="btn sm" onClick={ai.run} disabled={!!ai.busy} title={T.aiHint}>{ai.busy ? <span className="spin" /> : <Icon name="spark" />}{ai.busy ?? T.aiBtn}</button></div> : null}
         <div className="toc-list" ref={list}>
+          {items.length ? null : <p className="toc-empty">{T.tocEmpty}</p>}
           {shown.map(({ it, i, kids }) => (
             <div key={it.key} className={cx('toc-i', `l${it.level}`, i === curShown && 'on')}>
               {kids ? <button type="button" className={cx('toc-fold', folded.has(it.key) && 'shut')} onClick={() => toggle(it.key)} aria-expanded={!folded.has(it.key)} aria-label={folded.has(it.key) ? '展开' : '收起'}><Icon name="down" /></button> : <span className="toc-fold" />}

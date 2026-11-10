@@ -1,5 +1,5 @@
 /** 调宿主接口：所有请求带编辑令牌。跨域部署时宿主要允许这个来源 */
-import type { ChatGroup, DirectoryUser, EditorDoc, EditorFile, PresenceUser, SaveBody, SaveConflict, SaveResult, SurveyResponse } from './protocol';
+import type { ChatGroup, DirectoryUser, EditorDoc, EditorFile, OutlineBody, OutlineResult, PresenceUser, SaveBody, SaveConflict, SaveResult, SurveyResponse } from './protocol';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public data?: unknown) { super(message); }
@@ -89,6 +89,8 @@ export class EditorClient {
    * 返回发到了几个人、几个群，skipped 是没发成的（不在群里、不是同事…）
    */
   notify(body: { users: string[]; groups: string[]; text: string }): Promise<{ users: number; groups: number; skipped: number }> { return this.request('POST', '/notify', body); }
+  /** AI 识别目录：把文档里的短段落交给宿主的模型，认出哪些是标题、各是几级。宿主没有这个接口时抛 ApiError(404 / 405) */
+  outline(body: OutlineBody): Promise<OutlineResult> { return this.request('POST', '/outline', body); }
   responses(): Promise<{ responses: SurveyResponse[] }> { return this.request('GET', '/responses'); }
   respond(answers: Record<string, unknown>): Promise<{ id: string; count: number }> { return this.request('POST', '/responses', { answers }); }
   /** 问卷的收集状态 */

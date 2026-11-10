@@ -1,12 +1,12 @@
 /**
  * 导入：把源文件转成 HTML，再由 Tiptap 的 setContent 解析成文档结构。
- * docx 用 mammoth，Markdown 用 marked，txt 按行成段落，html 直接用。
+ * docx 用 mammoth（标题按大纲级别认，见 headings.ts），Markdown 用 marked，txt 按行成段落，html 直接用。
  */
-import JSZip from 'jszip';
 import mammoth from 'mammoth';
 import { marked } from 'marked';
 import type { EditorClient, EditorFile } from '@cai/bridge';
 import { anchorNames, anchorOfHref, slugOf, validAnchor } from './anchors';
+import { prepareDocx } from './headings';
 import { imageSize, placeImages, type ImageProgress, type PendingImage } from './images';
 
 const escapeHtml = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
@@ -54,29 +54,16 @@ export function crossRefsToLinks(xml: string): string {
   return xml;
 }
 
-/** 把 docx 里的交叉引用改写成文档内链接（crossRefsToLinks）；没有交叉引用、读不了的原样返回 */
-async function withCrossRefLinks(data: ArrayBuffer): Promise<ArrayBuffer> {
-  try {
-    const zip = await JSZip.loadAsync(data);
-    const f = zip.file('word/document.xml');
-    if (!f) return data;
-    const xml = await f.async('string'), out = crossRefsToLinks(xml);
-    if (out === xml) return data;
-    zip.file('word/document.xml', out);
-    return await zip.generateAsync({ type: 'arraybuffer' });
-  } catch { return data; }
-}
-
 /** 转换时图片的占位地址，转完换成真的（images.ts） */
 const PH = 'cai-img:';
 
 /**
- * Word：里面的图片交给宿主保存成附件（得到带令牌的地址），传不上去时退成 data: 地址内嵌；交叉引用先改写成文档内链接（crossRefsToLinks）。
+ * Word：里面的图片交给宿主保存成附件（得到带令牌的地址），传不上去时退成 data: 地址内嵌；转换前先改写交叉引用、按大纲级别认标题（headings.ts 的 prepareDocx）。
  * 图片先收下、给占位地址，转完再一起传（一样的只传一次、同时传几张，onProgress 报进度），并带上像素宽高（images.ts）。
- * mammoth 的样式映射保持默认：Heading 1-6 → h1-h6，列表、表格、加粗、斜体、链接都能对上。
+ * mammoth 的样式映射保持默认：Heading 1-6 → h1-h6，列表、表格、加粗、斜体、链接都能对上；样式不叫这个名字的标题由 headings.ts 先换成它认的。
  */
 export async function docxToHtml(data: ArrayBuffer, client?: EditorClient, onProgress?: ImageProgress): Promise<string> {
-  data = await withCrossRefLinks(data);
+  data = await prepareDocx(data, crossRefsToLinks);
   const images: PendingImage[] = [];
   const convertImage = mammoth.images.imgElement(async (image) => {
     const raw: ArrayBuffer | Uint8Array = await image.readAsArrayBuffer(), bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw), size = imageSize(bytes);

@@ -48,6 +48,25 @@ export interface EditorDoc {
   responded?: number;
 }
 
+/* ---------- AI 识别目录（文档） ---------- */
+
+/**
+ * 文档里一段可能是标题的短段落。i 是编辑器自己编的序号（宿主原样带回来），t 是文字，
+ * f 是用逗号隔开的格式特征：h1～h6 这一段已经是几级标题（只给模型当参考，不会出现在结果里）、b 整段加粗、c 居中、数字是字号（磅）
+ */
+export interface OutlineLine { i: number; t: string; f?: string }
+/**
+ * POST /api/v1/editor/outline 的请求体：lines 是这一批按顺序排的短段落（一次不超过 OUTLINE_BATCH 行、OUTLINE_CHARS 个字，长文档分几次问），
+ * before 是这一批之前已经定下来的标题（最后几十个），让各批的级别接得上
+ */
+export interface OutlineBody { lines: OutlineLine[]; before?: { level: number; t: string }[] }
+/** 返回：哪几行是标题、各是几级（1～6）。mock 为真表示宿主没接真的模型，是按编号写法猜的 */
+export interface OutlineResult { items: { i: number; level: number }[]; mock?: boolean }
+export const OUTLINE_BATCH = 300;
+export const OUTLINE_CHARS = 9000;
+/** 一行文字最多这么长，再长的段落不会是标题 */
+export const OUTLINE_LINE_MAX = 80;
+
 /** PUT /api/v1/editor/doc 的请求体 */
 export interface SaveBody { version: number; content: unknown; plain: string; title?: string }
 export interface SaveResult { version: number; updatedAt: string }
