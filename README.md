@@ -29,7 +29,7 @@ npm run typecheck
 
 见 `packages/bridge/src/protocol.ts`：
 
-- 接口：`GET/PUT/PATCH {api}/api/v1/editor/doc`、`POST …/presence`、`POST …/asset`、`GET …/asset/:id`、`GET …/directory`、`GET …/groups`（多维表格的群组字段用：当前成员在的群 `mine: true`，加上这份内容里已经填着的群的名字 `mine: false`；没有这个接口时编辑器当作一个群都没有）、`POST …/notify`（多维表格的按钮「发消息」：`{ users, groups, text }`，宿主以当前成员的名义发）、`GET/POST …/responses`、`POST …/collecting`，都用 `Authorization: Bearer <token>`。
+- 接口：`GET/PUT/PATCH {api}/api/v1/editor/doc`、`POST …/presence`、`POST …/asset`、`GET …/asset/:id`、`GET …/directory`、`GET …/groups`（多维表格的群组字段用：当前成员在的群 `mine: true`，加上这份内容里已经填着的群的名字 `mine: false`；没有这个接口时编辑器当作一个群都没有）、`POST …/notify`（多维表格的按钮「发消息」：`{ users, groups, text }`，宿主以当前成员的名义发）、`POST …/outline`（文档的「AI 识别目录」：`{ lines: [{ i, t, f }], before }` 是正文里按顺序排的短段落，宿主用自己的模型认出哪些是标题，回 `{ items: [{ i, level }], mock }`；没有这个接口时编辑器提示用不了）、`GET/POST …/responses`、`POST …/collecting`，都用 `Authorization: Bearer <token>`。
 - 消息：编辑器 → 宿主 `ready / title / saving / saved / dirty / conflict / collab / present / error / navigate / request / exported / export-failed / imported / selection / comment-new / comment-open / comment-orphans / comment-moved`；宿主 → 编辑器 `theme / title / insert / export / readonly / command / focus / flush / comments / comment-focus / comment-pending`。
 - 评论（文档、表格）：`ready` 里带 `comments: true`。编辑器只管选范围、生成锚点（`CommentAnchor`，宿主原样保存的不透明 JSON）、画高亮、报点击和找不到的锚点；评论串、回复、@ 提到、通知都在宿主。加评论不改内容，只读的人也能评论。
 - 文档格式的实时协同连到宿主的 `ws(s)://…/ws/collab/<编号>?token=…`，协议和 y-websocket 相同。

@@ -6,7 +6,7 @@
  * - 普通（地址参数 collab=0）：直接加载 s.doc.content，改动后 markDirty 走会话的自动保存。
  * 协同模式 6 秒没同步上、或服务端拒绝时，退成只读视图并提示，可以重试。
  * 评论（comments.ts）：选中文字后点浮出来的「评论」或按 Ctrl/⌘+Alt+M，编辑和只读都能用；评论串本身在宿主那边。
- * 目录（outline.tsx，2026-10-27）：按标题列在正文左边，点了跳过去；窄的时候是左下角的按钮。
+ * 目录（outline.tsx，2026-10-27）：按标题列在正文左边，点了跳过去；窄的时候是左下角的按钮。AI 识别目录（aioutline.tsx，2026-11-10）：把只是加粗、编了号的段落认成标题。
  * 看大图（2026-10-27，同事反馈知识库、文档里的图片不能双击放大）：双击图片（只读时单击也行，触屏上双击），把全文的图片交给宿主全屏看（image-view）。
  * 格式（format.tsx，2026-10-27）：字体、字号、文字颜色、底纹、对齐，列表和编号的样式；表格拖竖线调列宽（schema.ts）。
  */
@@ -21,6 +21,7 @@ import * as Y from 'yjs';
 import type { EditorToHost, PresenceUser, Session, Snapshot } from '@cai/bridge';
 import { useHost, useTheme } from '../shell/session';
 import { Field, Icon, Modal, Select, Toaster, Toolbar, cx, toast } from '../shell/ui';
+import { useAiOutline } from './aioutline';
 import { DocComments } from './comments';
 import { contentOf, paragraphsOf, plainOf, type DocNode } from './content';
 import { toDocx, toMarkdown } from './export';
@@ -267,8 +268,7 @@ export function DocEditor({ session: s }: { session: Session }) {
   const [link, setLink] = useState(false), [busy, setBusy] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null), bodyBox = useRef<HTMLDivElement>(null);
   // 目录：标题跟着正文变；宽屏固定在左边，窄的时候从左边滑出来
-  const toc = useToc(editor), tocWide = useWide(TOC_WIDE);
-  const [tocOpen, setTocOpen] = useTocOpen(toc.length, tocWide);
+  const { items: toc, body: hasBody } = useToc(editor), tocWide = useWide(TOC_WIDE);
 
   // 评论：控制器和扩展一个编辑器页面一份，编辑器因为连接变化重建时沿用；宿主发过 comments 才显示入口
   const cmt = useMemo(() => new DocComments((m) => s.send(m)), [s]);
@@ -351,6 +351,12 @@ export function DocEditor({ session: s }: { session: Session }) {
   const editable = !ro && (!collab || live);
   // 协同模式没连上时看到的是打开时的内容，按它判断「原文找不到」不准，先不报
   useEffect(() => { cmt.setReportable(!collab || live); }, [cmt, collab, live]);
+
+  // AI 识别目录：只给能改的人。一个标题都没有、正文又有三块以上时也给目录的入口（空白的新文档不出）
+  const canAi = editable && !!editor;
+  const [tocOpen, setTocOpen] = useTocOpen(toc.length, tocWide, canAi && hasBody);
+  const openToc = useCallback(() => setTocOpen(true), [setTocOpen]);
+  const ai = useAiOutline(editor, s.client, openToc);
 
   // 普通模式：改动后交给会话自动保存；协同模式服务端自己落库
   const onUpdate = useCallback((e: Editor) => { if (!collab && !roRef.current) s.markDirty(() => snapshot(e)); }, [collab, s]);
@@ -459,7 +465,7 @@ export function DocEditor({ session: s }: { session: Session }) {
     <div className="ed" style={{ colorScheme: theme }} data-collab={collab ? conn : 'off'}>
       {editable && editor ? <Tools editor={editor} onImage={() => fileInput.current?.click()} onLink={() => setLink(true)} /> : null}
       <div className="ed-row">
-        {showBody && editor && tocOpen ? <Outline editor={editor} items={toc} box={bodyBox} wide={tocWide} onClose={() => setTocOpen(false)} /> : null}
+        {showBody && editor && tocOpen ? <Outline editor={editor} items={toc} box={bodyBox} wide={tocWide} ai={canAi ? ai : null} onClose={() => setTocOpen(false)} /> : null}
         <div className="ed-body" ref={bodyBox}>
           <article className="doc">
             {note}
@@ -471,10 +477,11 @@ export function DocEditor({ session: s }: { session: Session }) {
           {cmtOn && editor && showBody ? <CommentButton editor={editor} box={bodyBox} made={made} onComment={comment} /> : null}
           {editable && editor && showBody ? <ImageResizer editor={editor} box={bodyBox} /> : null}
         </div>
-        {showBody && editor && toc.length && !tocOpen ? <TocButton wide={tocWide} onOpen={() => setTocOpen(true)} /> : null}
+        {showBody && editor && (toc.length || (canAi && hasBody)) && !tocOpen ? <TocButton wide={tocWide} onOpen={openToc} /> : null}
       </div>
       <input ref={fileInput} type="file" accept="image/*" className="sr" aria-label="选择图片" onChange={(e) => void pickImage(e)} />
       {link && editor ? <LinkDialog editor={editor} onClose={() => setLink(false)} /> : null}
+      {ai.modal}
       <Toaster />
     </div>
   );

@@ -10,6 +10,8 @@ export const USERS = [
 const text = (t) => ({ type: 'text', text: t });
 const p = (t) => ({ type: 'paragraph', content: t ? [text(t)] : [] });
 const h = (t, level = 2) => ({ type: 'heading', attrs: { level }, content: [text(t)] });
+/** 整段加粗的段落：没设成标题、只是看起来像标题的那种（试 AI 识别目录用） */
+const pb = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t, marks: [{ type: 'bold' }] }] });
 const ul = (items) => ({ type: 'bulletList', content: items.map((t) => ({ type: 'listItem', content: [p(t)] })) });
 
 /** 表格示例：Univer 的 IWorkbookData。格子 { v, t, s, f }，t：1 文字、2 数字、3 布尔；样式按 styles 里的编号引用；行列号从 0 起 */
@@ -101,6 +103,13 @@ const flowSample = () => ({ cells: [
 export const SAMPLES = {
   'demo-doc': { kind: 'doc', title: '9 月销售例会纪要', content: { type: 'doc', content: [h('结论'), ul(['华东区 3 个大单延期到 10 月，9 月目标完成率 86%。', '官网表单线索的转化率下降，需要缩短首次联系时间。']), h('待办'), ul(['李娜：10 月 9 日前确认 3 个延期大单的签约日期。', '周敏：10 月 12 日前上线线索 24 小时首次联系的抽查。']), p('会后把纪要发到销售部群。')] } },
   'demo-doc-empty': { kind: 'doc', title: '未命名文档', content: {} },
+  // 一个标题都没有、只靠编号和加粗分章节的文档：目录是空的，试「AI 识别目录」
+  'demo-doc-plain': { kind: 'doc', title: '仓库操作手册（没有设标题）', content: { type: 'doc', content: [
+    pb('第一章 入库'), pb('一、收货'), pb('1. 核对送货单'), p('货到以后先对照送货单点数，数量、型号都对得上再签收。'), pb('2. 贴标签'), p('每箱贴一张入库标签，写明到货日期和批次。'),
+    pb('二、上架'), p('按库位图把货放到指定的货架，扫码登记。'), ul(['重的放下层，轻的放上层。', '同一个批次放在一起。']),
+    pb('第二章 出库'), pb('一、拣货'), p('按拣货单的顺序走，一次拣完一张单。'), pb('二、复核和打包'), pb('1. 复核'), p('扫码核对型号和数量。'), pb('2. 打包'), p('易碎品加泡沫，箱外贴易碎标识。'),
+    pb('第三章 盘点'), p('每月最后一个工作日盘点一次，差异当天查清。'),
+  ] } },
   'demo-doc-import': { kind: 'doc', title: '产品需求说明', content: {}, sampleImport: 'sample.docx' },
   'demo-sheet': { kind: 'sheet', title: '华东区 Q4 商机跟进表', content: sheetSample() },
   'demo-sheet-empty': { kind: 'sheet', title: '未命名表格', content: {} },

@@ -142,6 +142,20 @@
 .toc-head .tt { height: 26px; padding: 0 6px; font-size: 12px; color: var(--ink-2); }
 .toc-head .toc-x { padding: 0 5px; }
 .toc-list { flex: 1; min-height: 0; overflow: auto; padding: 6px 6px 24px; display: flex; flex-direction: column; gap: 1px; }
+/* AI 识别目录（aioutline.tsx）：目录头下面一整行的按钮；一个标题都没有时列表里是一段说明；认出来的标题在弹窗里勾选、改级别 */
+.toc-ai { flex: none; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.toc-ai .btn { width: 100%; overflow: hidden; }
+.toc-ai .btn .ic { width: 14px; height: 14px; color: var(--accent); }
+.toc-empty { margin: 0; padding: 10px 8px; font-size: 12.5px; line-height: 1.65; color: var(--ink-3); }
+.aio-bar { display: flex; justify-content: flex-end; margin: -6px 0; }
+.aio-list { max-height: min(50vh, 440px); overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+.aio-i { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 6px; }
+.aio-i:hover { background: var(--surface-2); }
+.aio-l { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.aio-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.aio-i.off .aio-t { color: var(--ink-3); text-decoration: line-through; }
+.aio-lv { flex: none; height: 26px; padding: 0 4px; font-size: 12px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); color: var(--ink-2); }
+@media (pointer: coarse) { .aio-i { padding: 7px 6px; } }
 .toc-i { display: flex; align-items: center; border-radius: 6px; }
 .toc-i.l2 { padding-left: 14px; }
 .toc-i.l3 { padding-left: 28px; }
