@@ -164,7 +164,7 @@ export function SheetEditor({ session: s }: { session: Session }) {
       const data = wb.save(), name = safeName(s.doc.title);
       if (m.format === 'xlsx') s.download(xlsxBlob(data), `${name}.xlsx`);
       else if (m.format === 'csv') s.download(csvBlob(data, wb.getActiveSheet().getSheetId()), `${name}.csv`);
-      else toast(`不支持导出为 ${m.format}`);
+      else { toast(`不支持导出为 ${m.format}`); s.exportFailed(); }
     } else if (m.type === 'insert') {
       if (s.readonly) { toast('只读，不能插入'); return; }
       appendText(wb, m.text ?? (m.html ? htmlToText(m.html) : ''));

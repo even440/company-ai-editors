@@ -440,8 +440,8 @@ export function DocEditor({ session: s }: { session: Session }) {
       if (format === 'docx') s.download(await toDocx(json, title), `${title}.docx`);
       else if (format === 'md') s.download(new Blob([toMarkdown(json, title)], { type: 'text/markdown;charset=utf-8' }), `${title}.md`);
       else if (format === 'pdf') { window.print(); s.send({ type: 'exported', name: `${title}.pdf` }); }
-      else toast(`不支持导出为 ${format}`);
-    } catch (err) { toast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`); }
+      else { toast(`不支持导出为 ${format}`); s.exportFailed(); }
+    } catch (err) { toast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`); s.exportFailed(); }
   };
 
   const pickImage = async (ev: ChangeEvent<HTMLInputElement>) => {

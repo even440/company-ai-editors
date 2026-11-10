@@ -154,6 +154,8 @@ export type EditorToHost =
   | { type: 'open-chat'; convId: string }
   | { type: 'request'; what: 'share' | 'ai' | 'history' | 'close' }
   | { type: 'exported'; name: string }
+  /** 宿主要的导出没做成（生成失败、没有可导出的内容、不支持这种格式）：宿主把「正在导出」的等待提示收起来；原因由编辑器自己提示，不认的宿主什么都不做 */
+  | { type: 'export-failed'; message?: string }
   | { type: 'imported'; title: string }
   | { type: 'selection'; text: string }
   /** 用户要评论当前选中的内容：宿主打开评论框；发出以后把新评论放进 comments 发回来。quote 和 anchor.quote 相同，方便宿主直接显示 */

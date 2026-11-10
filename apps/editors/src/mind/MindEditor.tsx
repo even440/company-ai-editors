@@ -109,7 +109,7 @@ export function MindEditor({ session: s }: { session: Session }) {
         if (!url) throw new Error('生成图片失败');
         s.download(await (await fetch(url)).blob(), title + '.png');
       } else throw new Error('不支持导出为 ' + format);
-    } catch (e) { toast('导出失败：' + errMsg(e)); }
+    } catch (e) { toast('导出失败：' + errMsg(e)); s.exportFailed(); }
     finally { setBusy(null); }
   };
 

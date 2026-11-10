@@ -120,12 +120,12 @@ export function FlowEditor({ session: s }: { session: Session }) {
   useEffect(() => { graphRef.current?.drawGrid({ type: 'dot', args: { color: cssVar('--line-2'), thickness: 1 } }); }, [theme]);
 
   function exportAs(format: string) {
-    const g = graphRef.current; if (!g) return;
-    if (!g.getCellCount()) { toast('流程图是空的，没有可导出的内容'); return; }
+    const g = graphRef.current; if (!g) { s.exportFailed(); return; }
+    if (!g.getCellCount()) { toast('流程图是空的，没有可导出的内容'); s.exportFailed(); return; }
     const name = `${s.doc.title}.${format === 'svg' ? 'svg' : 'png'}`;
     g.cleanSelection();
     if (format === 'svg') g.toSVG((svg) => s.download(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }), name), { viewBox: g.getContentArea().inflate(24), preserveDimensions: true, copyStyles: true, serializeImages: true });
-    else g.toPNG((uri) => { fetch(uri).then((r) => r.blob()).then((b) => s.download(b, name)).catch(() => toast('导出失败')); }, { padding: 24, ratio: '2', backgroundColor: cssVar('--surface'), copyStyles: true, serializeImages: true });
+    else g.toPNG((uri) => { fetch(uri).then((r) => r.blob()).then((b) => s.download(b, name)).catch(() => { toast('导出失败'); s.exportFailed(); }); }, { padding: 24, ratio: '2', backgroundColor: cssVar('--surface'), copyStyles: true, serializeImages: true });
   }
 
   /** 宿主插入一段文字：加一个步骤节点，放在现有内容下方 */
