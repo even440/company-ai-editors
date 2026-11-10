@@ -69,9 +69,9 @@ export function BoardEditor({ session: s }: { session: Session }) {
   };
 
   async function exportAs(format: string) {
-    const a = api.current; if (!a) return;
+    const a = api.current; if (!a) { s.exportFailed(); return; }
     const elements = a.getSceneElements();
-    if (!elements.length) { toast('画板是空的，没有可导出的内容'); return; }
+    if (!elements.length) { toast('画板是空的，没有可导出的内容'); s.exportFailed(); return; }
     const appState = { ...a.getAppState(), exportBackground: true, exportWithDarkMode: theme === 'dark', exportEmbedScene: false };
     const files = a.getFiles(), name = `${s.doc.title}.${format === 'svg' ? 'svg' : 'png'}`;
     try {
@@ -83,7 +83,7 @@ export function BoardEditor({ session: s }: { session: Session }) {
         const blob = await exportToBlob({ elements, appState, files, mimeType: 'image/png', exportPadding: 24, getDimensions: (w: number, h: number) => ({ width: w * 2, height: h * 2, scale: 2 }) });
         s.download(blob, name);
       }
-    } catch (e) { toast('导出失败：' + (e instanceof Error ? e.message : String(e))); }
+    } catch (e) { toast('导出失败：' + (e instanceof Error ? e.message : String(e))); s.exportFailed(); }
   }
 
   /** 宿主插入一段文字：放在现有内容的下方（那里一定是空白），画板为空就放在原点附近 */

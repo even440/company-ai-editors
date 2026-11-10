@@ -72,11 +72,11 @@ export function SurveyEditor({ session: s }: { session: Session }) {
       let list = responses;
       if (!list) { list = (await s.client.responses()).responses; setResponses(list); }
       await exportXlsx(title, cRef.current, list, (b, n) => s.download(b, n));
-    } catch (e) { toast(T.exportFail + errMsg(e)); }
+    } catch (e) { toast(T.exportFail + errMsg(e)); s.exportFailed(); }
   };
 
   useHost((m) => {
-    if (m.type === 'export') { if (m.format === 'xlsx') void doExport(); else toast(T.noExport(m.format)); }
+    if (m.type === 'export') { if (m.format === 'xlsx') void doExport(); else { toast(T.noExport(m.format)); s.exportFailed(); } }
     else if (m.type === 'command' && m.name === 'gen') { if (ro) return; update((c) => { c.qs.push(...GEN_QUESTIONS()); }); setTab('edit'); toast(T.genAdded); }
     // AI 面板的「加到问卷」：按约定的格式认出题目（ai.ts）
     else if (m.type === 'insert') {

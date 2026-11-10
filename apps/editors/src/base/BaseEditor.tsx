@@ -215,7 +215,7 @@ export function BaseEditor({ session: s }: { session: Session }) {
   /* ---------- 宿主消息 ---------- */
   const doExport = async () => {
     try { const blob = await exportXlsx(fields, recs, users, view.name); s.download(blob, `${title || '多维表格'}.xlsx`); toast('已导出 Excel'); }
-    catch (e) { toast('导出失败：' + (e instanceof Error ? e.message : String(e))); }
+    catch (e) { toast('导出失败：' + (e instanceof Error ? e.message : String(e))); s.exportFailed(); }
   };
   const applyNlq = (q: string) => {
     const flt = M.nlq(cur(), q, usersRef.current);
@@ -242,7 +242,7 @@ export function BaseEditor({ session: s }: { session: Session }) {
     if (m.type === 'readonly') setHostRo(m.value);
     else if (m.type === 'title') setTitle(m.title);
     else if (m.type === 'flush') void s.flush();
-    else if (m.type === 'export') { if (m.format === 'xlsx') void doExport(); else toast('多维表格只能导出 Excel'); }
+    else if (m.type === 'export') { if (m.format === 'xlsx') void doExport(); else { toast('多维表格只能导出 Excel'); s.exportFailed(); } }
     else if (m.type === 'insert') {
       if (ro) { toast('只读，不能插入'); return; }
       const text = (m.text ?? (m.html ? stripHtml(m.html) : '')).trim(), t = M.firstOf(cur(), 'text');

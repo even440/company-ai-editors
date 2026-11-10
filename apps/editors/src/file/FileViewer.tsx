@@ -141,7 +141,7 @@ export function FileViewer({ session: s }: { session: Session }) {
     s.send({ type: 'exported', name: f.name });
   };
   useHost((m) => {
-    if (m.type === 'export') { if (m.format === 'download') download(); else toast(`不支持导出为 ${m.format}`); }
+    if (m.type === 'export') { if (m.format === 'download') download(); else { toast(`不支持导出为 ${m.format}`); s.exportFailed(); } }
     else if (m.type === 'command' && m.name === 'download') download();
   });
 

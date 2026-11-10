@@ -149,6 +149,9 @@ export class Session {
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
     this.send({ type: 'exported', name });
   }
+
+  /** 导出没做成：告诉宿主不用再等了（提示由调用的编辑器自己显示） */
+  exportFailed(message?: string) { this.send({ type: 'export-failed', message }); }
 }
 
 export async function openSession(opts?: SessionOptions): Promise<Session> {
