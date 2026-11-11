@@ -1,6 +1,7 @@
 /**
- * 文档导入时认标题（apps/editors/src/doc/headings.ts 的 outlineHeadings、prepareDocx）的自测：
+ * 文档的自测。一是导入时认标题（apps/editors/src/doc/headings.ts 的 outlineHeadings、prepareDocx）：
  * Word 的标题不一定用叫 heading 1～6 的样式——段落自己写大纲级别、样式起了别的名字、样式是「基于」标题样式建的，都要认成标题。
+ * 二是粘贴带图的内容时，从同一次复制的 RTF、从 data: 地址里取出图片本身（images.ts 的 rtfImages、dataImage）。
  * 这个仓库没有测试框架，直接用 Node 跑 TypeScript 源码（要 Node 22.15 以上）：
  *   node --experimental-strip-types tools/check-doc.mjs
  * 全部通过时最后一行是「全部通过（N 组）」，有不过的会列出来、退出码是 1。里面的文字都是编的。
@@ -108,6 +109,43 @@ await t('不用改的文件原样返回（不重新打包）；不是 docx 的�
   assert.equal(await prepareDocx(plain), plain);
   const junk = new TextEncoder().encode('这不是压缩包').buffer;
   assert.equal(await prepareDocx(junk), junk);
+});
+
+/* ---------- 粘贴带图的内容：从 RTF、data: 地址里取出图片（images.ts 的 rtfImages、dataImage） ---------- */
+const { rtfImages, dataImage, imageSize } = await import(ED + 'images.ts');
+const hexOf = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+// 一张 3×2 的 PNG 的开头（文件头 + IHDR），够认类型和宽高
+const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 3, 0, 0, 0, 2, 8, 6, 0, 0, 0]);
+const JPG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 1, 2, 0xff, 0xc0, 0, 11, 8, 0, 5, 0, 7, 3, 1, 2, 3]);
+/** Word 复制时一张图的写法：真的图在 \shppict 里，后面跟一份给老软件看的 WMF */
+const wordPict = (bytes, blip, tag) => `{\\*\\shppict{\\pict{\\*\\picprop\\shplid1025{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn wzDescription}{\\sv a \\{b\\} c}}}\\picscalex100\\picscaley100\\picw2646\\pich1764\\picwgoal1500\\pichgoal1000\\${blip}\\bliptag${tag}{\\*\\blipuid ${'0f'.repeat(16)}}${hexOf(bytes).replace(/(.{16})/g, '$1\r\n')}}}{\\nonshppict{\\pict\\picscalex100\\picw2646\\pich1764\\wmetafile8\\bliptag${tag} 010009000003de00000000}}`;
+
+await t('RTF 里的图片按顺序取出来：PNG、JPEG 各一张，后面那份 WMF 不要', () => {
+  const rtf = `{\\rtf1\\ansi{\\fonttbl{\\f0 Calibri;}}\\pard 第一段\\par ${wordPict(PNG, 'pngblip', -1234)}\\par 第二段\\par ${wordPict(JPG, 'jpegblip', 77)}\\par}`;
+  const got = rtfImages(rtf);
+  assert.deepEqual(got.map((g) => g.type), ['image/png', 'image/jpeg']);
+  assert.deepEqual([...got[0].bytes], [...PNG]);
+  assert.deepEqual([...got[1].bytes], [...JPG]);
+  assert.deepEqual(imageSize(got[0].bytes), { w: 3, h: 2 });
+  assert.deepEqual(imageSize(got[1].bytes), { w: 7, h: 5 });
+});
+await t('RTF 里没有图片、只有 WMF、内容不完整时不出错', () => {
+  assert.deepEqual(rtfImages(''), []);
+  assert.deepEqual(rtfImages('{\\rtf1 只有文字\\par}'), []);
+  assert.deepEqual(rtfImages('{\\rtf1{\\pict\\wmetafile8\\bliptag1 0100090000}}'), []);
+  // 半截的（括号没合上）：不死循环，能取多少取多少
+  assert.equal(rtfImages(`{\\rtf1{\\pict\\pngblip\\bliptag1 ${hexOf(PNG)}`).length <= 1, true);
+  // 大写的十六进制、数据紧跟在属性后面
+  assert.deepEqual([...rtfImages(`{\\pict\\pngblip ${hexOf(PNG).toUpperCase()}}`)[0].bytes], [...PNG]);
+});
+await t('data: 地址里的图片：base64 和直接写的都认，不是图片的不要', () => {
+  const b64 = Buffer.from(PNG).toString('base64');
+  assert.deepEqual([...dataImage(`data:image/png;base64,${b64}`).bytes], [...PNG]);
+  assert.equal(dataImage(`data:image/png;base64,${b64}`).type, 'image/png');
+  assert.equal(new TextDecoder().decode(dataImage('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22a%22%2F%3E').bytes), '<svg xmlns="a"/>');
+  assert.equal(dataImage('data:text/html;base64,PGI+eDwvYj4='), null);
+  assert.equal(dataImage('data:image/png;base64,***'), null);
+  assert.equal(dataImage('https://example.com/a.png'), null);
 });
 
 console.log(process.exitCode ? '有没通过的' : `全部通过（${n} 组）`);

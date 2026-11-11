@@ -1,6 +1,6 @@
 /**
  * 文档编辑器的界面文字：按平台的界面语言（shell/i18n.ts）挑一套。
- * 2026-11-10 加「AI 识别目录」时新写的字在这里（五种语言）；更早的界面文字还是写在组件里的中文，以后逐个挪过来。
+ * 2026-11-10 加「AI 识别目录」、2026-11-11 加粘贴图片时新写的字在这里（五种语言）；更早的界面文字还是写在组件里的中文，以后逐个挪过来。
  */
 import { pick } from '../shell/i18n';
 
@@ -23,6 +23,13 @@ const zh = {
   apply: (n: number) => `设为标题（${n}）`,
   applied: (n: number) => `已把 ${n} 段设为标题`,
   moved: '正文在这期间改过，没有找到这些段落，请再识别一次',
+  imgTip: '插入图片（截图、复制的图片可以直接粘贴，也可以把图片文件拖进来）',
+  imgPick: '选择图片',
+  imgOnly: '只能插入图片文件',
+  imgSending: (n: number) => (n > 1 ? `正在上传 ${n} 张图片……` : '正在上传图片……'),
+  imgFailed: (n: number, why: string) => (n ? `有 ${n} 张图片没有传上去：${why}` : `图片上传失败：${why}`),
+  imgNoEdit: '现在不能编辑，内容没有插进去',
+  imgLost: (n: number) => `有 ${n} 张图片没能带过来：复制的内容里没有图片本身。请单独复制那张图片再粘贴`,
 };
 type Dict = typeof zh;
 
@@ -45,6 +52,13 @@ const en: Dict = {
   apply: (n) => `Set as headings (${n})`,
   applied: (n) => `${n} paragraph${n === 1 ? '' : 's'} set as heading${n === 1 ? '' : 's'}`,
   moved: 'The text changed in the meantime and these paragraphs weren’t found. Please detect again.',
+  imgTip: 'Insert image (you can also paste a screenshot or copied image, or drag image files in)',
+  imgPick: 'Choose images',
+  imgOnly: 'Only image files can be inserted',
+  imgSending: (n) => (n > 1 ? `Uploading ${n} images…` : 'Uploading image…'),
+  imgFailed: (n, why) => (n ? `${n} image${n === 1 ? '' : 's'} failed to upload: ${why}` : `Image upload failed: ${why}`),
+  imgNoEdit: 'The document can’t be edited right now, so nothing was inserted',
+  imgLost: (n) => `${n} image${n === 1 ? '' : 's'} couldn’t be brought over: the copied content didn’t include the image itself. Copy that image on its own and paste again.`,
 };
 
 const pt: Dict = {
@@ -66,6 +80,13 @@ const pt: Dict = {
   apply: (n) => `Definir como títulos (${n})`,
   applied: (n) => `${n} parágrafo${n === 1 ? ' definido como título' : 's definidos como títulos'}`,
   moved: 'O texto mudou nesse meio-tempo e esses parágrafos não foram encontrados. Detecte de novo.',
+  imgTip: 'Inserir imagem (também dá para colar uma captura de tela ou imagem copiada, ou arrastar arquivos de imagem)',
+  imgPick: 'Escolher imagens',
+  imgOnly: 'Só é possível inserir arquivos de imagem',
+  imgSending: (n) => (n > 1 ? `Enviando ${n} imagens…` : 'Enviando imagem…'),
+  imgFailed: (n, why) => (n ? `${n} imagem${n === 1 ? ' não foi enviada' : 'ns não foram enviadas'}: ${why}` : `Falha ao enviar a imagem: ${why}`),
+  imgNoEdit: 'O documento não pode ser editado agora; nada foi inserido',
+  imgLost: (n) => `${n} imagem${n === 1 ? ' não veio' : 'ns não vieram'} junto: o conteúdo copiado não trazia a imagem em si. Copie essa imagem sozinha e cole de novo.`,
 };
 
 const ja: Dict = {
@@ -87,6 +108,13 @@ const ja: Dict = {
   apply: (n) => `見出しに設定（${n}）`,
   applied: (n) => `${n} 個の段落を見出しに設定しました`,
   moved: 'その間に本文が変更され、これらの段落が見つかりませんでした。もう一度検出してください',
+  imgTip: '画像を挿入（スクリーンショットやコピーした画像はそのまま貼り付けられます。画像ファイルのドラッグも可）',
+  imgPick: '画像を選択',
+  imgOnly: '挿入できるのは画像ファイルだけです',
+  imgSending: (n) => (n > 1 ? `${n} 枚の画像をアップロード中…` : '画像をアップロード中…'),
+  imgFailed: (n, why) => (n ? `${n} 枚の画像をアップロードできませんでした：${why}` : `画像のアップロードに失敗しました：${why}`),
+  imgNoEdit: '現在は編集できないため、挿入されませんでした',
+  imgLost: (n) => `${n} 枚の画像を取り込めませんでした：コピーした内容に画像そのものが含まれていません。その画像だけをコピーして貼り付けてください`,
 };
 
 const ko: Dict = {
@@ -108,6 +136,13 @@ const ko: Dict = {
   apply: (n) => `제목으로 설정(${n})`,
   applied: (n) => `단락 ${n}개를 제목으로 설정했습니다`,
   moved: '그사이 본문이 바뀌어 이 단락들을 찾지 못했습니다. 다시 인식해 주세요',
+  imgTip: '이미지 삽입(스크린샷이나 복사한 이미지는 바로 붙여넣을 수 있고, 이미지 파일을 끌어다 놓아도 됩니다)',
+  imgPick: '이미지 선택',
+  imgOnly: '이미지 파일만 삽입할 수 있습니다',
+  imgSending: (n) => (n > 1 ? `이미지 ${n}장 업로드 중…` : '이미지 업로드 중…'),
+  imgFailed: (n, why) => (n ? `이미지 ${n}장을 업로드하지 못했습니다: ${why}` : `이미지 업로드 실패: ${why}`),
+  imgNoEdit: '지금은 편집할 수 없어 삽입되지 않았습니다',
+  imgLost: (n) => `이미지 ${n}장을 가져오지 못했습니다: 복사한 내용에 이미지 자체가 없습니다. 그 이미지만 따로 복사해서 붙여넣어 주세요`,
 };
 
 export const T: Dict = pick({ 'zh-CN': zh, en, 'pt-BR': pt, ja, ko });

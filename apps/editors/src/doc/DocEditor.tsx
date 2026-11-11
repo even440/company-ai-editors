@@ -9,8 +9,9 @@
  * 目录（outline.tsx，2026-10-27）：按标题列在正文左边，点了跳过去；窄的时候是左下角的按钮。AI 识别目录（aioutline.tsx，2026-11-10）：把只是加粗、编了号的段落认成标题。
  * 看大图（2026-10-27，同事反馈知识库、文档里的图片不能双击放大）：双击图片（只读时单击也行，触屏上双击），把全文的图片交给宿主全屏看（image-view）。
  * 格式（format.tsx，2026-10-27）：字体、字号、文字颜色、底纹、对齐，列表和编号的样式；表格拖竖线调列宽（schema.ts）。
+ * 图片（paste.ts，2026-11-11）：截图、复制的图片直接粘贴，图片文件拖进来，工具栏选文件，都是传上去再插在光标处；带图的内容里别人打不开的图片也先传上去。
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { Extensions, JSONContent } from '@tiptap/core';
 import { Collaboration } from '@tiptap/extension-collaboration';
 import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
@@ -26,9 +27,12 @@ import { DocComments } from './comments';
 import { contentOf, paragraphsOf, plainOf, type DocNode } from './content';
 import { toDocx, toMarkdown } from './export';
 import { AlignPick, ColorPick, FontPick, ListPick, SizePick } from './format';
+import { T } from './i18n';
+import { imageSize, placeImages } from './images';
 import { importToHtml, titleOf } from './import';
 import { anchorNames, anchorOfHref, anchorValue, findAnchor, validAnchor } from './anchors';
 import { ImageResizer } from './imgsize';
+import { caretAfterImage, imagePaste, imagesIn, type HtmlPaste, type PasteHandlers } from './paste';
 import { Outline, TOC_WIDE, TocButton, tocOf, useToc, useTocOpen, useWide, type TocItem } from './outline';
 import { Y_FIELD, Y_TITLE, schemaExtensions } from './schema';
 import './doc.css';
@@ -137,7 +141,7 @@ function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => voi
         <button type="button" className="tt" onClick={() => c().deleteColumn().run()} title="删除这一列">删列</button>
         <button type="button" className="tt" onClick={() => c().deleteTable().run()}>删除表格</button>
       </> : <button type="button" className="tt" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="插入表格（插入后拖竖线调列宽）"><Icon name="grid" /><span className="lbl">表格</span></button>}
-      <button type="button" className="tt" onClick={onImage} title="插入图片"><Icon name="image" /><span className="lbl">图片</span></button>
+      <button type="button" className="tt" onClick={onImage} title={T.imgTip}><Icon name="image" /><span className="lbl">图片</span></button>
       <button type="button" className={cx('tt', st.link && 'on')} onClick={onLink} aria-pressed={st.link} title="链接"><Icon name="link" /><span className="lbl">链接</span></button>
     </Toolbar>
   );
@@ -266,13 +270,17 @@ export function DocEditor({ session: s }: { session: Session }) {
   const roRef = useRef(ro); roRef.current = ro;
   const [editor, setEditor] = useState<Editor | null>(null);
   const [link, setLink] = useState(false), [busy, setBusy] = useState<string | null>(null);
+  // 正在传的图片有几张（粘贴、拖进来、工具栏选的）；和导入的进度 busy 分开记，连着贴几次也数得清
+  const [sending, setSending] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null), bodyBox = useRef<HTMLDivElement>(null);
   // 目录：标题跟着正文变；宽屏固定在左边，窄的时候从左边滑出来
   const { items: toc, body: hasBody } = useToc(editor), tocWide = useWide(TOC_WIDE);
 
   // 评论：控制器和扩展一个编辑器页面一份，编辑器因为连接变化重建时沿用；宿主发过 comments 才显示入口
   const cmt = useMemo(() => new DocComments((m) => s.send(m)), [s]);
-  const cmtExt = useMemo(() => [cmt.extension()], [cmt]);
+  // 粘贴、拖进来的图片（paste.ts）：处理函数在下面，每次现取
+  const paste = useRef<PasteHandlers | null>(null);
+  const extra = useMemo(() => [cmt.extension(), imagePaste(() => paste.current!)], [cmt]);
   const [cmtOn, setCmtOn] = useState(false), [made, setMade] = useState(0);
   const comment = useCallback(() => { if (cmt.create()) setMade((n) => n + 1); else toast('先选中要评论的文字'); }, [cmt]);
   // 宿主可能在编辑器挂上之前就发来了评论列表（会话替我们记着）
@@ -444,15 +452,45 @@ export function DocEditor({ session: s }: { session: Session }) {
     } catch (err) { toast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`); s.exportFailed(); }
   };
 
-  const pickImage = async (ev: ChangeEvent<HTMLInputElement>) => {
-    const file = ev.target.files?.[0]; ev.target.value = '';
-    if (!file || !editor) return;
-    if (!file.type.startsWith('image/')) { toast('只能插入图片文件'); return; }
-    setBusy('正在上传图片……');
-    try { const r = await s.client.upload(file); editor.chain().focus().setImage({ src: r.url, alt: file.name }).run(); }
-    catch (e) { toast(`上传失败：${e instanceof Error ? e.message : '未知错误'}`); }
-    finally { setBusy(null); }
-  };
+  /** 图片文件传上去、插在光标处：粘贴的、拖进来的、工具栏选的都走这里。传的时候正文照常能写，传完插在那时光标所在的地方 */
+  const insertImages = useCallback(async (list: File[]) => {
+    const files = imagesIn(list);
+    if (!files.length) { toast(T.imgOnly); return; }
+    setSending((n) => n + files.length);
+    try {
+      const got = await Promise.allSettled(files.map(async (f) => {
+        // 顺手读出像素宽高：图片加载出来之前就按比例留好位置（image.ts）
+        const [r, size] = await Promise.all([s.client.upload(f), f.arrayBuffer().then((b) => imageSize(new Uint8Array(b)), () => null)]);
+        // 剪贴板里的截图一律叫 image.png，当说明没有意义
+        return { type: 'image', attrs: { src: r.url, alt: /^image\.\w+$/i.test(f.name) ? null : f.name, ...(size ? { width: size.w, height: size.h } : {}) } };
+      }));
+      const nodes = got.flatMap((g) => (g.status === 'fulfilled' ? [g.value] : []));
+      const bad = got.find((g) => g.status === 'rejected');
+      if (bad) toast(T.imgFailed(nodes.length ? files.length - nodes.length : 0, bad.reason instanceof Error ? bad.reason.message : T.unknown));
+      if (!nodes.length) return;
+      const e = editorRef.current;
+      if (!e || e.isDestroyed || !e.isEditable) { toast(T.imgNoEdit); return; }
+      e.chain().focus().insertContent(nodes).command(({ tr }) => { caretAfterImage(tr); return true; }).scrollIntoView().run();
+    } finally { setSending((n) => n - files.length); }
+  }, [s]);
+  /** 带图的一段内容：图片先传上去（一样的只传一次，传不上去的内嵌，和导入 Word 一样），换好地址再贴 */
+  const pasteHtml = useCallback(async (job: HtmlPaste) => {
+    setSending((n) => n + job.images.length);
+    try {
+      const urls = await placeImages(job.images, s.client);
+      const e = editorRef.current;
+      if (!e || e.isDestroyed || !job.finish(e.view, urls)) { toast(T.imgNoEdit); return; }
+      if (job.lost) toast(T.imgLost(job.lost));
+    } catch (err) { toast(T.imgFailed(0, err instanceof Error ? err.message : T.unknown)); }
+    finally { setSending((n) => n - job.images.length); }
+  }, [s]);
+  paste.current = { files: (f) => void insertImages(f), html: (j) => void pasteHtml(j) };
+  // 图片没拖到正文上（拖到了工具栏、目录、页边）：不让浏览器在编辑器的位置上打开这张图，把页面换掉
+  useEffect(() => {
+    const stop = (e: DragEvent) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); };
+    window.addEventListener('dragover', stop); window.addEventListener('drop', stop);
+    return () => { window.removeEventListener('dragover', stop); window.removeEventListener('drop', stop); };
+  }, []);
 
   const note = !collab ? null
     : conn === 'denied' ? <div className="note warn ed-note"><Icon name="warn" /> 没法参与协同编辑：{connMsg}。下面是打开时的内容，只能查看。</div>
@@ -469,8 +507,8 @@ export function DocEditor({ session: s }: { session: Session }) {
         <div className="ed-body" ref={bodyBox}>
           <article className="doc">
             {note}
-            {busy ? <div className="note ed-note"><span className="spin" /> {busy}</div> : null}
-            {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} extra={cmtExt} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} onImage={viewImage} />
+            {busy || sending > 0 ? <div className="note ed-note ed-busy" role="status"><span className="spin" /> {busy ?? T.imgSending(sending)}</div> : null}
+            {showBody ? <Body key={live ? `y${attempt}` : 'plain'} s={s} ysess={live ? ysess : null} editable={editable} extra={extra} onEditor={onEditor} onUpdate={onUpdate} onSelection={onSelection} onImage={viewImage} />
               : <div className="ed-state"><span className="spin" role="status" aria-label={CONN_TEXT[conn]} /></div>}
             {ro && showBody ? <p className="note ed-note">你对这篇文档只有阅读权限{cmtOn ? '，可以选中文字加评论' : ''}。</p> : null}
           </article>
@@ -479,7 +517,7 @@ export function DocEditor({ session: s }: { session: Session }) {
         </div>
         {showBody && editor && (toc.length || (canAi && hasBody)) && !tocOpen ? <TocButton wide={tocWide} onOpen={openToc} /> : null}
       </div>
-      <input ref={fileInput} type="file" accept="image/*" className="sr" aria-label="选择图片" onChange={(e) => void pickImage(e)} />
+      <input ref={fileInput} type="file" accept="image/*" multiple className="sr" aria-label={T.imgPick} onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ''; if (files.length) void insertImages(files); }} />
       {link && editor ? <LinkDialog editor={editor} onClose={() => setLink(false)} /> : null}
       {ai.modal}
       <Toaster />

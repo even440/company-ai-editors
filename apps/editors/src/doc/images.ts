@@ -2,6 +2,7 @@
  * 导入 Word 时里面的图片（2026-10-27：深圳同事导入一份 656 张图、64 MB 的操作手册，图片在 mammoth 转换时一张张排队经美国的服务器传，等了 4 分钟）：
  * 转换时先只收下图片、给占位地址，转完再一起交给宿主——内容一样的只传一次，同时传 PARALLEL 张，边传边报进度；传不上去的退成 data: 地址内嵌。
  * 顺手从文件头读出图片的像素宽高写进 <img>，浏览器在图片加载前就按比例留好位置：几百张懒加载的图陆续出来时，正文不会一直往下挤（目录跳过去的位置才准）
+ * 最后两个函数是给粘贴用的（paste.ts，2026-11-11）：带图的内容里，图片本身在 data: 地址或同一次复制的 RTF 里
  */
 import type { EditorClient } from '@cai/bridge';
 
@@ -73,4 +74,59 @@ function sizeOf(b: Uint8Array): { w: number; h: number } | null {
     }
   }
   return null;
+}
+
+/* ---------- 粘贴进来的图片（paste.ts）：从 data: 地址、从 RTF 里取出图片本身 ---------- */
+
+/** data: 地址里的图片；不是图片、解不出来返回 null */
+export function dataImage(src: string): PendingImage | null {
+  const comma = src.indexOf(',');
+  if (!/^data:/i.test(src) || comma < 0) return null;
+  const meta = src.slice(5, comma), type = meta.split(';')[0].trim().toLowerCase(), data = src.slice(comma + 1);
+  if (!type.startsWith('image/')) return null;
+  try {
+    if (!/;\s*base64\s*$/i.test(meta)) return { bytes: new TextEncoder().encode(decodeURIComponent(data)), type };
+    const bin = atob(data.replace(/\s+/g, '')), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.length ? { bytes, type } : null;
+  } catch { return null; }
+}
+
+const HEX = (c: number) => (c >= 48 && c <= 57 ? c - 48 : c >= 97 && c <= 102 ? c - 87 : c >= 65 && c <= 70 ? c - 55 : -1);
+const SPACE = (c: number) => c === 32 || c === 10 || c === 13 || c === 9;
+
+/**
+ * RTF 里的图片，按出现的顺序。每张图是一组 {\pict …属性… 十六进制}：属性里可能套着别的组（{\*\picprop…}、{\*\blipuid …}），数据是组里最后那一长串。
+ * 只要 PNG、JPEG（\pngblip、\jpegblip）：同一张图 Word 还会再给一份 WMF（\wmetafile8，放在 \nonshppict 里给老软件看），那份不要。
+ */
+export function rtfImages(rtf: string): PendingImage[] {
+  const out: PendingImage[] = [];
+  let at = 0;
+  for (;;) {
+    const start = rtf.indexOf('{\\pict', at);
+    if (start < 0) break;
+    // 这一组到哪儿结束：数括号，反斜杠后面的那个字符不算
+    let depth = 0, end = start;
+    for (; end < rtf.length; end++) {
+      const c = rtf.charCodeAt(end);
+      if (c === 92) end++;
+      else if (c === 123) depth++;
+      else if (c === 125 && --depth === 0) break;
+    }
+    at = end + 1;
+    let from = end;
+    while (from > start && (HEX(rtf.charCodeAt(from - 1)) >= 0 || SPACE(rtf.charCodeAt(from - 1)))) from--;
+    const head = rtf.slice(start, from);
+    const type = /\\pngblip(?![a-z])/.test(head) ? 'image/png' : /\\jpegblip(?![a-z])/.test(head) ? 'image/jpeg' : '';
+    if (!type) continue;
+    const bytes = new Uint8Array((end - from) >> 1);
+    let n = 0, hi = -1;
+    for (let i = from; i < end; i++) {
+      const v = HEX(rtf.charCodeAt(i));
+      if (v < 0) continue;
+      if (hi < 0) hi = v; else { bytes[n++] = (hi << 4) | v; hi = -1; }
+    }
+    if (n) out.push({ bytes: bytes.subarray(0, n), type });
+  }
+  return out;
 }
