@@ -47,6 +47,8 @@
 .ed-note { margin-bottom: 4px; }
 .ed-note.row { display: flex; align-items: center; gap: 8px; }
 .ed-note .spin { vertical-align: -2px; margin-right: 4px; }
+/* 进度（导入、传图片）：正文滚到哪儿都看得见——贴图的时候人多半不在文档开头 */
+.ed-busy { position: sticky; top: 8px; z-index: 6; box-shadow: var(--shadow); }
 
 /* 正文 */
 .doc-body h1 { font-size: 22px; margin-top: 12px; }
