@@ -10,6 +10,7 @@
  * 看大图（2026-10-27，同事反馈知识库、文档里的图片不能双击放大）：双击图片（只读时单击也行，触屏上双击），把全文的图片交给宿主全屏看（image-view）。
  * 格式（format.tsx，2026-10-27）：字体、字号、文字颜色、底纹、对齐，列表和编号的样式；表格拖竖线调列宽（schema.ts）。
  * 图片（paste.ts，2026-11-11）：截图、复制的图片直接粘贴，图片文件拖进来，工具栏选文件，都是传上去再插在光标处；带图的内容里别人打不开的图片也先传上去。
+ * 正文里已经有的 data: 图片（inline-images.ts，2026-11-14）：能改的人打开后传上去换成文件地址，平台存正文时不认 data: 地址。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { Extensions, JSONContent } from '@tiptap/core';
@@ -33,6 +34,7 @@ import { importToHtml, titleOf } from './import';
 import { anchorNames, anchorOfHref, anchorValue, findAnchor, validAnchor } from './anchors';
 import { ImageResizer } from './imgsize';
 import { caretAfterImage, imagePaste, imagesIn, type HtmlPaste, type PasteHandlers } from './paste';
+import { InlineImages } from './inline-images';
 import { Outline, TOC_WIDE, TocButton, tocOf, useToc, useTocOpen, useWide, type TocItem } from './outline';
 import { Y_FIELD, Y_TITLE, schemaExtensions } from './schema';
 import './doc.css';
@@ -396,6 +398,15 @@ export function DocEditor({ session: s }: { session: Session }) {
     if (index >= 0) s.send({ type: 'image-view', images, index });
   }, [s]);
 
+  // 正文里 data: 地址的图片传上去换成文件地址（inline-images.ts）：能改的人打开后扫一遍，导入、宿主插入、粘贴时有图退成内嵌的以后再扫
+  const inline = useMemo(() => new InlineImages(() => editorRef.current, s.client, (n) => toast(T.inlineFailed(n))), [s]);
+  useEffect(() => {
+    if (!editor || !editable) return;
+    // 两个人同时打开时错开一点：后一个多半看到已经换好了
+    const t = window.setTimeout(() => void inline.run(), 1000 + Math.random() * 2000);
+    return () => window.clearTimeout(t);
+  }, [editor, editable, inline]);
+
   /** 宿主改了标题：协同模式写进 Y.Text，普通模式只记下来 */
   const applyTitle = useCallback((t: string) => {
     s.doc.title = t; document.title = t;
@@ -416,6 +427,8 @@ export function DocEditor({ session: s }: { session: Session }) {
         // 几百张图的 Word 要传一会儿：报到第几张了（images.ts）
         const html = await importToHtml(f, await res.arrayBuffer(), s.client, (done, total) => { if (total) setBusy(`正在导入 ${f.name}：处理图片 ${done} / ${total}`); });
         editor.commands.setContent(html, { emitUpdate: true });
+        // 传不上去退成 data: 地址的图片（images.ts）接着再传
+        void inline.run();
         const title = titleOf(s.doc.title, f.name);
         if (collab) applyTitle(title);
         else { s.markDirty(() => ({ ...snapshot(editor), title })); await s.flush(); }
@@ -425,7 +438,7 @@ export function DocEditor({ session: s }: { session: Session }) {
       } catch (e) { imported.current = false; toast(`导入失败：${e instanceof Error ? e.message : '未知错误'}`); }
       finally { setBusy(null); }
     })();
-  }, [editor, editable, collab, s, applyTitle]);
+  }, [editor, editable, collab, s, applyTitle, inline]);
 
   // 宿主的消息
   useHost((m) => {
@@ -438,7 +451,7 @@ export function DocEditor({ session: s }: { session: Session }) {
     else if (!editor) return;
     else if (m.type === 'insert') {
       if (!editor.isEditable) { toast('现在是只读状态，插不进去'); return; }
-      if (m.html) editor.chain().focus('end').insertContent(m.html).run();
+      if (m.html) { editor.chain().focus('end').insertContent(m.html).run(); void inline.run(); }
       else if (m.text) { const paras = paragraphsOf(m.text); if (paras.length) editor.chain().focus('end').insertContent(paras).run(); }
     } else if (m.type === 'export') void exportAs(editor, m.format);
   });
@@ -481,9 +494,11 @@ export function DocEditor({ session: s }: { session: Session }) {
       const e = editorRef.current;
       if (!e || e.isDestroyed || !job.finish(e.view, urls)) { toast(T.imgNoEdit); return; }
       if (job.lost) toast(T.imgLost(job.lost));
+      // 传不上去的退成了 data: 地址（placeImages）：过一会儿再传一次
+      if (urls.some((u) => u.startsWith('data:'))) void inline.run();
     } catch (err) { toast(T.imgFailed(0, err instanceof Error ? err.message : T.unknown)); }
     finally { setSending((n) => n - job.images.length); }
-  }, [s]);
+  }, [s, inline]);
   paste.current = { files: (f) => void insertImages(f), html: (j) => void pasteHtml(j) };
   // 图片没拖到正文上（拖到了工具栏、目录、页边）：不让浏览器在编辑器的位置上打开这张图，把页面换掉
   useEffect(() => {
