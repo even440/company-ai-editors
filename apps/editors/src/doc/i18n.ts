@@ -30,6 +30,7 @@ const zh = {
   imgFailed: (n: number, why: string) => (n ? `有 ${n} 张图片没有传上去：${why}` : `图片上传失败：${why}`),
   imgNoEdit: '现在不能编辑，内容没有插进去',
   imgLost: (n: number) => `有 ${n} 张图片没能带过来：复制的内容里没有图片本身。请单独复制那张图片再粘贴`,
+  inlineFailed: (n: number) => `有 ${n} 张内嵌的图片没能存到云端，下次打开文档时会再试`,
 };
 type Dict = typeof zh;
 
@@ -59,6 +60,7 @@ const en: Dict = {
   imgFailed: (n, why) => (n ? `${n} image${n === 1 ? '' : 's'} failed to upload: ${why}` : `Image upload failed: ${why}`),
   imgNoEdit: 'The document can’t be edited right now, so nothing was inserted',
   imgLost: (n) => `${n} image${n === 1 ? '' : 's'} couldn’t be brought over: the copied content didn’t include the image itself. Copy that image on its own and paste again.`,
+  inlineFailed: (n) => `${n} embedded image${n === 1 ? '' : 's'} couldn’t be saved to the cloud; it will be retried the next time the document is opened`,
 };
 
 const pt: Dict = {
@@ -87,6 +89,7 @@ const pt: Dict = {
   imgFailed: (n, why) => (n ? `${n} imagem${n === 1 ? ' não foi enviada' : 'ns não foram enviadas'}: ${why}` : `Falha ao enviar a imagem: ${why}`),
   imgNoEdit: 'O documento não pode ser editado agora; nada foi inserido',
   imgLost: (n) => `${n} imagem${n === 1 ? ' não veio' : 'ns não vieram'} junto: o conteúdo copiado não trazia a imagem em si. Copie essa imagem sozinha e cole de novo.`,
+  inlineFailed: (n) => `${n} imagem${n === 1 ? ' incorporada não foi salva' : 'ns incorporadas não foram salvas'} na nuvem; vamos tentar de novo na próxima vez que o documento for aberto`,
 };
 
 const ja: Dict = {
@@ -115,6 +118,7 @@ const ja: Dict = {
   imgFailed: (n, why) => (n ? `${n} 枚の画像をアップロードできませんでした：${why}` : `画像のアップロードに失敗しました：${why}`),
   imgNoEdit: '現在は編集できないため、挿入されませんでした',
   imgLost: (n) => `${n} 枚の画像を取り込めませんでした：コピーした内容に画像そのものが含まれていません。その画像だけをコピーして貼り付けてください`,
+  inlineFailed: (n) => `埋め込み画像 ${n} 枚をクラウドに保存できませんでした。次にドキュメントを開いたときに再試行します`,
 };
 
 const ko: Dict = {
@@ -143,6 +147,7 @@ const ko: Dict = {
   imgFailed: (n, why) => (n ? `이미지 ${n}장을 업로드하지 못했습니다: ${why}` : `이미지 업로드 실패: ${why}`),
   imgNoEdit: '지금은 편집할 수 없어 삽입되지 않았습니다',
   imgLost: (n) => `이미지 ${n}장을 가져오지 못했습니다: 복사한 내용에 이미지 자체가 없습니다. 그 이미지만 따로 복사해서 붙여넣어 주세요`,
+  inlineFailed: (n) => `포함된 이미지 ${n}장을 클라우드에 저장하지 못했습니다. 다음에 문서를 열 때 다시 시도합니다`,
 };
 
 export const T: Dict = pick({ 'zh-CN': zh, en, 'pt-BR': pt, ja, ko });
