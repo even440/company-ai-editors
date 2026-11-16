@@ -2,13 +2,15 @@
  * 表格内容的转换：Univer 的 IWorkbookData 和 SheetJS 工作簿互转、纯文本、空工作簿。
  * 不依赖 Univer 的运行时实例，导入导出和搜索文本都在这里，组件只负责把它们接到会话上。
  */
-import { CellValueType, LocaleType, type ICellData, type IObjectMatrixPrimitiveType, type IStyleData, type IWorkbookData, type IWorksheetData } from '@univerjs/presets';
+import { CellValueType, HorizontalAlign, LocaleType, VerticalAlign, type ICellData, type IObjectMatrixPrimitiveType, type IStyleData, type IWorkbookData, type IWorksheetData } from '@univerjs/presets';
 import * as XLSX from 'xlsx';
 
 /** 保存的内容里 appVersion 要有值，Univer 保存时会换成它自己的版本号 */
 const APP_VERSION = '1.0.3';
-/** 新建工作簿的大小：够日常填一张小表，不够时在表里插行插列 */
-const EMPTY_ROWS = 50, EMPTY_COLS = 12;
+/** 新建工作簿的大小：A 到 Z 列、200 行。原来是 50 行 12 列，宽屏上格子只到屏幕一半，右边一大片空白（用户 2026-11-16） */
+const EMPTY_ROWS = 200, EMPTY_COLS = 26;
+/** Univer 的默认列宽、左边行号那一栏的宽度：算一张表铺开有多宽用 */
+const COL_W = 88, ROW_HEADER_W = 46;
 
 /** content 是不是一份 Univer 工作簿（不是就按空内容处理） */
 export function isWorkbookData(c: unknown): c is IWorkbookData {
@@ -21,6 +23,47 @@ export function emptyWorkbook(id: string, name: string): IWorkbookData {
     id, name, appVersion: APP_VERSION, locale: LocaleType.ZH_CN, styles: {}, sheetOrder: ['sheet-01'],
     sheets: { 'sheet-01': { id: 'sheet-01', name: 'Sheet1', rowCount: EMPTY_ROWS, columnCount: EMPTY_COLS, cellData: {} } },
   };
+}
+
+/**
+ * 打开时把每张表补到够大：至少 200 行、26 列；列加起来还没有屏幕宽的（列被拖窄了、屏幕特别宽）再接着补。
+ * 只多出空的行列，不动格子；不算改动，下次有别的改动保存时一起存下。viewW 是要铺满的宽度（像素）。
+ */
+export function withRoom(data: IWorkbookData, viewW = 0): IWorkbookData {
+  const sheets: IWorkbookData['sheets'] = {};
+  for (const [id, sh] of Object.entries(data.sheets)) {
+    const colW = sh.defaultColumnWidth || COL_W;
+    let cols = Math.max(sh.columnCount ?? 0, EMPTY_COLS);
+    let w = sh.rowHeader?.width ?? ROW_HEADER_W;
+    for (let c = 0; c < cols && w < viewW; c++) { const d = sh.columnData?.[c]; w += d?.hd ? 0 : d?.w ?? colW; }
+    if (w < viewW) cols += Math.min(Math.ceil((viewW - w) / colW), 200);
+    sheets[id] = { ...sh, rowCount: Math.max(sh.rowCount ?? 0, EMPTY_ROWS), columnCount: cols };
+  }
+  return { ...data, sheets };
+}
+
+/**
+ * 合并的格子没设过对齐的，左右、上下都居中：Univer 默认靠下，合并出来的高格子里字贴在最底下（用户 2026-11-16）。
+ * 设过对齐的那个方向不动。导入的文件（样式带不过来）和以前存下的内容打开时用；在表格里点合并走 merge.ts。
+ */
+export function centerMerged(data: IWorkbookData): IWorkbookData {
+  const sheets: IWorkbookData['sheets'] = {};
+  for (const [id, sh] of Object.entries(data.sheets)) {
+    sheets[id] = sh;
+    if (!sh.mergeData?.length) continue;
+    const cellData: IObjectMatrixPrimitiveType<ICellData> = { ...sh.cellData };
+    let touched = false;
+    for (const m of sh.mergeData) {
+      const cell = cellData[m.startRow]?.[m.startColumn];
+      const old = (typeof cell?.s === 'string' ? data.styles?.[cell.s] : cell?.s) as IStyleData | null | undefined;
+      if (old?.ht && old.vt) continue;
+      const s: IStyleData = { ...old, ht: old?.ht || HorizontalAlign.CENTER, vt: old?.vt || VerticalAlign.MIDDLE };
+      cellData[m.startRow] = { ...cellData[m.startRow], [m.startColumn]: { ...cell, s } };
+      touched = true;
+    }
+    if (touched) sheets[id] = { ...sh, cellData };
+  }
+  return { ...data, sheets };
 }
 
 /** 一个格子显示出来的文字：富文本取正文，布尔值写成 TRUE / FALSE */
@@ -119,7 +162,7 @@ export function fromSheetJS(wb: XLSX.WorkBook, id: string, name: string): IWorkb
     sheetOrder.push(sid);
   });
   if (!sheetOrder.length) return emptyWorkbook(id, name);
-  return { id, name, appVersion: APP_VERSION, locale: LocaleType.ZH_CN, styles: {}, sheetOrder, sheets };
+  return centerMerged({ id, name, appVersion: APP_VERSION, locale: LocaleType.ZH_CN, styles: {}, sheetOrder, sheets });
 }
 
 /** 读一份 xlsx / xls / csv 的二进制。cellStyles 开着才会解析列宽行高（!cols / !rows） */

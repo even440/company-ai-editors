@@ -23,12 +23,21 @@
 ```
 
 - 格子 `{ v, t, f, s, p }`：`v` 值，`t` 类型（1 文字、2 数字、3 布尔，布尔的 `v` 是 0 / 1），`f` 公式字符串（带 `=`），`s` 样式，`p` 富文本（Univer 文档结构）。行号列号都从 0 起。
-- 空内容 `{}`：打开时建一个空工作簿（一张 Sheet1，50 行 12 列）。
+- 空内容 `{}`：打开时建一个空工作簿（一张 Sheet1，200 行 26 列）。
+- 打开时每张表补到至少 200 行 26 列，列加起来没有屏幕宽的接着补到铺满（`convert.ts` 的 `withRoom`）：只多出空的行列，不算改动，下次有别的改动时一起存下。
 - `plain`：每个工作表每一行的非空格子按制表符拼、行间换行；多张表时每张表前加一行 `【表名】`。上限 5 万字。
 
 ## 改动检测与保存
 
 监听 Univer 的 `CommandExecuted` 事件，只把类型为 MUTATION、编号以 `sheet.mutation.` 开头的命令当成改动（选区、滚动、激活工作表都是 operation，不算；单元格编辑器内部的 `doc.mutation.*` 和公式引擎的 `formula.mutation.*` 也不算）。另外排除几个不改内容的 mutation：`empty`、`set-worksheet-row-auto-height`、`mark-dirty-filter-change`、`set-worksheet-permission-points`、`data-validation-formula-mark-dirty`。工作簿刚建好的 0.8 秒内 Univer 自己跑的 mutation 也忽略。改动后 `s.markDirty(() => ({ content: save(), plain }))`，会话停下来 1.5 秒后保存；保存时把工作簿的 `name` 换成当前标题。
+
+## 界面上和 Univer 默认不一样的地方
+
+- 工具栏和「开始 / 公式 / 视图」靠左排（`sheet.css`）：Univer 默认居中，宽屏上左上角空一大块。
+- 合并单元格以后字在合并出来的格子里左右、上下居中（Univer 默认靠下，几行高的合并格子里字贴在最底下）：
+  - 在表格里点合并（全部 / 垂直 / 水平）：`merge.ts` 经 `SheetInterceptorService.interceptCommand` 给合并命令加一条「左上角那格设成居中」的改动，和合并是同一步，撤销一次一起退回；
+  - 导入的文件、以前存下的内容：`convert.ts` 的 `centerMerged` 在打开时补上（同样不算改动）；
+  - 两处都只补没设过的方向，特意设过靠左、靠上的不动。
 
 ## 只读
 
@@ -66,15 +75,16 @@
 
 - 格子的值和类型、公式（SheetJS 的 `f` 加 `=`）、数字格式（`z` 变成样式的 `n.pattern`，日期靠它显示）、合并单元格、列宽行高、隐藏的行列和工作表都保留；
 - 单元格样式（字体、填充、边框）不保留；共享公式只保留每个格子自己的公式字符串；
-- 行数在数据基础上多留 20 行、列多留 4 列（至少 50 × 12）。
+- 行数在数据基础上多留 20 行、列多留 4 列（至少 200 × 26）；合并的格子居中（样式带不过来，Excel 里合并的格子一般是居中的）。
 
 转换后立刻保存，再 `await s.client.imported()`，并发 `imported` 消息。解析失败就按空内容打开，提示并发 `error`。
 
 ## 文件
 
 - `SheetEditor.tsx`：组件，Univer 实例、改动检测、宿主消息、导入流程。
-- `convert.ts`：空工作簿、纯文本、SheetJS 和 `IWorkbookData` 互转、xlsx / csv 导出。
-- `sheet.css`：外围样式（只读提示、导入遮罩、深色和手机宽度）。Univer 自己的样式从 `@univerjs/preset-sheets-core/lib/index.css` 引入。
+- `convert.ts`：空工作簿、纯文本、SheetJS 和 `IWorkbookData` 互转、xlsx / csv 导出、打开时补行列和合并格子居中。
+- `merge.ts`：点合并时一起居中。
+- `sheet.css`：外围样式（只读提示、导入遮罩、深色和手机宽度）、工具栏靠左。Univer 自己的样式从 `@univerjs/preset-sheets-core/lib/index.css` 引入。
 
 ## 已知限制
 

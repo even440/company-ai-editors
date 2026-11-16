@@ -5,6 +5,9 @@
 /* Univer 把它的工作台挂进容器，让它和容器一样高 */
 .sh-univer > * { height: 100%; }
 
+/* 工具栏和上面的「开始 / 公式 / 视图」靠左排。Univer 默认居中，宽屏上左上角空着一大块（用户 2026-11-16） */
+.sh-univer [data-u-comp="ribbon-toolbar"], .sh-univer [data-u-comp="ribbon-header-menu"] [role="tablist"] { justify-content: flex-start; }
+
 .sh-ro { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-bottom: 1px solid var(--warn-line); background: var(--warn-soft); color: var(--warn-ink); font-size: 13px; }
 .sh-ro .ic { width: 14px; height: 14px; flex: none; }
 .sh-ro b { font-weight: 650; }
