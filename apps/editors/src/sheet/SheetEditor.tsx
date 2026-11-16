@@ -12,7 +12,8 @@ import { safeName, type Session } from '@cai/bridge';
 import { useHost, useTheme } from '../shell/session';
 import { Icon, Toaster, toast } from '../shell/ui';
 import { SheetComments } from './comments';
-import { csvBlob, emptyWorkbook, fromSheetJS, isWorkbookData, lastRowOf, plainOf, readSpreadsheet, xlsxBlob } from './convert';
+import { centerMerged, csvBlob, emptyWorkbook, fromSheetJS, isWorkbookData, lastRowOf, plainOf, readSpreadsheet, withRoom, xlsxBlob } from './convert';
+import { centerOnMerge } from './merge';
 
 /** 这些 mutation 不改内容（渲染时算行高、过滤器脏标记、权限点、空操作），不算改动 */
 const NOT_A_CHANGE = new Set([
@@ -108,10 +109,13 @@ export function SheetEditor({ session: s }: { session: Session }) {
       }
     };
     let permissionInit: { unsubscribe(): void } | null = null;
+    let mergeCenter: { dispose(): void } | null = null;
     const load = (data: IWorkbookData) => {
       settling = true;
-      const wb = api.createWorkbook(data);
+      // 行列补到铺满屏幕（按屏幕宽度算，窗口以后拉大也够）；合并的格子没设过对齐的居中
+      const wb = api.createWorkbook(centerMerged(withRoom(data, Math.max(el.clientWidth, window.screen?.width ?? 0))));
       permissionInit ??= watchPermissionInit();
+      mergeCenter ??= centerOnMerge(univer);
       cmt.attach(wb);
       setTimeout(() => { settling = false; }, 800);
       return wb;
@@ -146,7 +150,7 @@ export function SheetEditor({ session: s }: { session: Session }) {
       } finally { if (!disposed) setBusy(null); }
     })();
 
-    return () => { disposed = true; inst.current = null; cmtRef.current = null; cmt.dispose(); permissionInit?.unsubscribe(); univer.dispose(); };
+    return () => { disposed = true; inst.current = null; cmtRef.current = null; cmt.dispose(); permissionInit?.unsubscribe(); mergeCenter?.dispose(); univer.dispose(); };
   }, [s]);
 
   // 主题跟着宿主：Univer 自带深色模式；评论标记的颜色也重新取
