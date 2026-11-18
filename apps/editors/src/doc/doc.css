@@ -101,9 +101,10 @@
 .img-size .img-h.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
 @media (pointer: coarse) { .img-size .img-h { width: 20px; height: 20px; } .img-size .img-h.e { right: -11px; margin-top: -10px; } .img-size .img-h.se { right: -11px; bottom: -11px; } }
 .img-size-n { position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 4px; background: rgba(0, 0, 0, .62); color: #fff; font-size: 12px; white-space: nowrap; }
-/* 链接弹窗里文档的标题（DocEditor.tsx 的 LinkDialog），按级别缩进 */
+/* 链接弹窗里文档的标题（DocEditor.tsx 的 LinkDialog），按级别缩进。
+   每一行不许被压扁（flex: none）：行上有 overflow: hidden，标题一多就会被列表的 max-height 挤成十来像素高、字只露半截，滚动条也出不来 */
 .link-heads { display: flex; flex-direction: column; gap: 1px; align-self: stretch; max-height: 260px; overflow-y: auto; padding: 4px; border: 1px solid var(--line); border-radius: 8px; }
-.link-head { text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--ink); font: inherit; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-head { flex: none; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--ink); font: inherit; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .link-head:hover { background: var(--accent-soft); }
 .link-head.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
