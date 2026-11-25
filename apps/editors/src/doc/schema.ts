@@ -8,6 +8,7 @@ import { TableKit } from '@tiptap/extension-table';
 import StarterKit from '@tiptap/starter-kit';
 import { Anchors } from './anchors';
 import { Image } from './image';
+import { LineHeight } from './lineheight';
 import { ListStyle } from './liststyle';
 import { textStyleExtensions } from './textstyle';
 
@@ -26,6 +27,8 @@ export const schemaExtensions = (): Extensions => [
   // 字体、字号、颜色、底纹、对齐（textstyle.ts）和列表、编号的样式（liststyle.ts），2026-10-27；平台那一份也有
   ...textStyleExtensions(),
   ListStyle,
+  // 行距（lineheight.ts，2026-11-25）：标题和段落的 lineHeight；平台那一份也有
+  LineHeight,
 ];
 
 /** ProseMirror 的 schema，做结构转换时用 */
