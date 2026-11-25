@@ -5,9 +5,10 @@
  * Markdown 里书签写成 <a id> 放在那一行前面。
  * 格式（2026-10-27）：对齐、字体、字号、文字颜色、底纹、列表和编号的样式、拖过的列宽都带到 Word 里；Markdown 表示不了，照旧只有文字。
  */
-import { AlignmentType, Bookmark, BorderStyle, Document, ExternalHyperlink, HeadingLevel, InternalHyperlink, ImageRun, LevelFormat, Packer, Paragraph, ShadingType, Table, TableCell, TableLayoutType, TableRow, TextRun, WidthType, type ILevelsOptions, type IParagraphOptions, type ParagraphChild } from 'docx';
+import { AlignmentType, Bookmark, BorderStyle, Document, ExternalHyperlink, HeadingLevel, InternalHyperlink, ImageRun, LevelFormat, LineRuleType, Packer, Paragraph, ShadingType, Table, TableCell, TableLayoutType, TableRow, TextRun, WidthType, type ILevelsOptions, type IParagraphOptions, type ParagraphChild } from 'docx';
 import { anchorNames, anchorOfHref, slugOf, validAnchor } from './anchors';
 import type { DocNode } from './content';
+import { lineHeightOf } from './lineheight';
 import { hexOf, ptOf, wordFont } from './textstyle';
 
 type Marks = { bold?: boolean; italic?: boolean; strike?: boolean; code?: boolean; link?: string; color?: string; bg?: string; font?: string; size?: number };
@@ -90,7 +91,11 @@ function withBookmarks(n: DocNode, children: ParagraphChild[], w: WordCtx, extra
 const HEADING = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
 /** 段落、标题的对齐（textstyle.ts 的 ALIGNS）；左对齐是默认，不写 */
 const ALIGN: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> = { center: AlignmentType.CENTER, right: AlignmentType.RIGHT, justify: AlignmentType.JUSTIFIED };
-const alignOf = (n: DocNode): Partial<IParagraphOptions> => { const a = ALIGN[String(n.attrs?.textAlign ?? '')]; return a ? { alignment: a } : {}; };
+/** 对齐；行距（lineheight.ts）写成多倍行距：单倍是 240 */
+const alignOf = (n: DocNode): Partial<IParagraphOptions> => {
+  const a = ALIGN[String(n.attrs?.textAlign ?? '')], lh = lineHeightOf(n.attrs?.lineHeight);
+  return { ...(a ? { alignment: a } : {}), ...(lh === null ? {} : { spacing: { line: Math.round(240 * lh), lineRule: LineRuleType.AUTO } }) };
+};
 
 /* ---------- 列表和编号 ---------- */
 

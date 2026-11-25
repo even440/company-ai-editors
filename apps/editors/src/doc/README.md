@@ -9,8 +9,8 @@
 - `image.ts`：最简单的图片节点（块级、`src` / `alt` / `title` / `width` / `height`），starter-kit 3 没有图片节点，又不想多装包。宽高是图片显示的大小（插入、导入时是图片的像素大小，调过大小后是调过的，见 `imgsize.tsx`）：浏览器在懒加载的图片出来之前按比例留好位置；同样的宽高写成 `contain-intrinsic-size` 给屏幕外不画的图占位（见「长文档」）。
 - `images.ts`：导入 Word 时的图片：去重、同时传、读像素宽高（见「导入」）；粘贴时从 data: 地址、RTF 里取出图片（见「图片」）。
 - `paste.ts`：粘贴、拖进来的图片（见「图片」）。
-- `textstyle.ts`、`liststyle.ts`、`format.tsx`：格式（见「格式」）：文字的字体、字号、颜色、底纹和段落对齐；列表、编号的样式；工具栏上的这几个按钮。
-- `outline.tsx`：目录（见「目录」）。
+- `textstyle.ts`、`liststyle.ts`、`lineheight.ts`、`format.tsx`：格式（见「格式」）：文字的字体、字号、颜色、底纹和段落对齐；列表、编号的样式；行距；工具栏上的这几个按钮。
+- `outline.tsx`：目录（见「目录」）。`toc.ts`：目录列哪些标题（`tocOf`）、设标题时按软换行拆开（`setHeadingLines`），不依赖页面，自测在 `tools/check-doc.mjs`。
 - `aioutline.tsx`：AI 识别目录（见「AI 识别目录」）；`i18n.ts`：它的界面文字（五种语言）。
 - `headings.ts`：导入 Word 时按大纲级别认标题（见「导入」）。
 - `jump.ts`：跳到正文里的某一块（目录、书签和文档内链接共用，见「目录」）。
@@ -23,7 +23,7 @@
 
 ## 内容格式
 
-`content` 是 Tiptap JSON：`{ type: 'doc', content: [...] }`。节点：`paragraph`、`heading`（level 1-6）、`bulletList` / `orderedList` / `listItem`、`blockquote`、`codeBlock`、`horizontalRule`、`hardBreak`、`table` / `tableRow` / `tableHeader` / `tableCell`、`image`（`attrs.src` 是宿主上传接口返回的带令牌地址）、`text`。样式：`bold`、`italic`、`strike`、`code`、`underline`、`link`、`textStyle`（颜色、底纹、字体、字号）。属性：标题和段落的 `textAlign`，列表的 `listStyle`，单元格的 `colwidth`（拖过的列宽，像素），见「格式」。
+`content` 是 Tiptap JSON：`{ type: 'doc', content: [...] }`。节点：`paragraph`、`heading`（level 1-6）、`bulletList` / `orderedList` / `listItem`、`blockquote`、`codeBlock`、`horizontalRule`、`hardBreak`、`table` / `tableRow` / `tableHeader` / `tableCell`、`image`（`attrs.src` 是宿主上传接口返回的带令牌地址）、`text`。样式：`bold`、`italic`、`strike`、`code`、`underline`、`link`、`textStyle`（颜色、底纹、字体、字号）。属性：标题和段落的 `textAlign`、`lineHeight`（行距），列表的 `listStyle`，单元格的 `colwidth`（拖过的列宽，像素），见「格式」。
 
 `plain` 是 `plainOf(content)`：段落、标题、列表项每个一行，表格一行一行、单元格之间用竖线隔开。
 
@@ -41,7 +41,7 @@
 
 y-websocket 的 `WebsocketProvider(serverUrl, roomname, doc, { params })`：`serverUrl` 是 `s.wsUrl()` 去掉 `/ws/collab/<编号>?token=…` 之后再接 `/ws/collab`，`roomname` 是文档编号，`params: { token, v }` 会拼到地址上。
 
-`v` 是这个编辑器认得的文档结构版本（`DocEditor.tsx` 的 `COLLAB_V`，平台 `src/server/modules/docs/collab.ts` 的 `COLLAB_V` 跟着改）：现在用的 y-tiptap 3.0.9 遇到不认识的样式（mark）会把整段文字从协同文档里删掉，所以结构里加新的样式时两边一起加一，发布时还开着的旧页面连协同会被关闭码 4426 拒绝，显示「编辑器已更新，请刷新页面」。新加属性（attrs）旧页面只是不认、编辑那一块时会丢掉，也算在内一起加。2：格式（2026-10-27）。
+`v` 是这个编辑器认得的文档结构版本（`DocEditor.tsx` 的 `COLLAB_V`，平台 `src/server/modules/docs/collab.ts` 的 `COLLAB_V` 跟着改）：现在用的 y-tiptap 3.0.9 遇到不认识的样式（mark）会把整段文字从协同文档里删掉，所以结构里加新的样式时两边一起加一，发布时还开着的旧页面连协同会被关闭码 4426 拒绝，显示「编辑器已更新，请刷新页面」。新加属性（attrs）不一定要加：旧页面的 ProseMirror 建节点时不认识的属性直接忽略（`computeAttrs` 只取自己认得的），不会删内容，只是旧页面编辑那一块时把它丢掉；加了就得平台和编辑器同一刻发布（平台先发、编辑器还是旧的时全部在线文档都连不上协同），2026-11-25 的行距（`lineHeight`）因此没有加。2：格式（2026-10-27）。
 
 ## 宿主消息
 
@@ -70,6 +70,7 @@ Word 的标题（`headings.ts`，2026-11-10：用户拿一份别的系统导出�
 - 编辑器外壳宽到 880 像素（`TOC_WIDE`）时固定在正文左边，窄的时候（手机、AI 助手右边那块、文档页开着 AI 面板）是左下角的圆按钮，点了从左边滑出来、选了就收起。
 - 开着还是关着按人记在本机（`localStorage` 的 `cai-doc-toc`），没设过时宽屏、有三个以上标题才默认打开；没有标题时只读的人不出按钮，能改的人在正文有三块以上时有（为了「AI 识别目录」，空白的新文档不出），这时打开的空目录只管这一次、不记到本机，里面写着怎么才有目录。
 - 点了跳过去（`jump.ts` 的 `jumpToPos`，书签和文档内链接的 `jumpTo` 也用它）：离得远直接到（一路滑过去会把途中懒加载的图都拉下来），近的平滑滚；之后 4 秒内有图片加载出来、正文高度变了（没写宽高的老图会把正文往下挤，深圳同事点「第十四章，14.2 基础设置」落点不对就是这样：书签是对的）就重新对准，本人滚动、点击、按键以后不再管。
+- 标题里的软换行（2026-11-25，用户截图：「1、收银台优惠」「2、门店要货」看着是两个标题，目录里只有一项「1、收银台优惠2、门店要货」——两行在同一段里，中间是 Shift+Enter 或粘贴进来的 `<br>`）：目录按行列出来，每行一项（`toc.ts` 的 `tocOf`，`TocItem.at` 是那一行开头的位置，跳过去、算当前一节都看它，`jump.ts` 的 `topAt` 在一段文字中间时量那一行）；空行不列。工具栏的段落样式设成标题时（`setHeadingLines`）先按软换行拆成几段，每行各是一个标题（对齐、行距留着，书签只留在第一行；空行、开头结尾的软换行直接去掉）；列表项的第一段这种不能直接换成标题的照旧走 Tiptap 的 `setHeading`（先挪出列表），不拆。链接弹窗还是一个标题一项（行之间用空格隔开），链的是整个标题。以前「标题 N」是 `toggleHeading`，现在是设置（下拉框选的就是当前级别时本来也不会触发）。
 - 目录在 `.ed-row` 里和 `.ed-body` 并排，评论按钮（`.ed-body > .cmt-btn`）和高亮照旧按 `.ed-body` 定位。打印时不显示。
 
 ## AI 识别目录
@@ -106,11 +107,12 @@ Word 的标题（`headings.ts`，2026-11-10：用户拿一份别的系统导出�
 
 - **文字**（`textstyle.ts`）：Tiptap 的 `TextStyle`（`<span style>`）加 `Color`、`BackgroundColor`、`FontFamily`、`FontSize` 四个属性，命令就是它们自带的 `setColor` / `unsetColor` 这些。工具栏里的字体（`FONTS`：微软雅黑、宋体、黑体、楷体、仿宋、Arial、Times New Roman、Courier New，值是 CSS 的 font-family，前面是 Windows 的字体、后面退到 Mac 上相近的）、字号（`SIZES`，磅，和 Word 一样，括号里是中文字号）、文字颜色和底纹各 7 种（`TEXT_COLORS` 选的是白底和深色底上都看得清的，`BG_COLORS` 偏浅）。
 - **粘贴进来的样式**只留看得出是特意设的：彩色、不太深也不太浅的字（黑、白、灰多半是原网页的默认颜色，深色模式下会看不见；Word 的「深蓝」这种很深的也不留），偏浅的彩色底纹（白底、灰底、深色底不留；Word 的高亮写成 `background` 简写也认），`FONTS` 里认得的字体（Word 里常写中文名，换成 `FONTS` 的写法），pt / px 的字号（6～96 磅）。颜色统一存成 `#RRGGBB`。没有这几种样式的 `<span>`（Word 的 `mso-*`）不建空样式。
+- **行距**（`lineheight.ts`，2026-11-25，用户：「找不到设置行间距的功能」）：标题和段落的 `lineHeight`（列表、表格里的字也是段落），值是 Word 的多倍行距，工具栏「对齐」旁边的按钮选：默认、1.0、1.15、1.5、2.0、2.5、3.0。页面上的 `line-height` 是值 × `LINE_UNIT`（1.3：Word 的单倍行距在中文字体上大约是字号的 1.3 倍，设了以后和 Word 里看着差不多；没设的照正文默认 1.75，大约是 1.35 倍），HTML 上另带 `data-line-height`。回车分出来的下一段跟着同样的行距（和 Word 一样）。粘贴时只认本编辑器复制出来的和 Word 的百分比（`line-height:150%`）里正好是这几种的，网页的行高不留。导出 Word 写成多倍行距（`w:spacing` 的 `line` = 240 × 值）。平台那一份也有（`LineHeight`、`cleanDoc` 的名单），只读页面、公众号排版也认。
 - **对齐**：`TextAlign`，标题和段落的 `textAlign`（center / right / justify；左对齐是默认，选它就是去掉）。快捷键 Ctrl+Shift+L / E / R / J（Mac 上 ⌘⇧）。
 - **列表、编号的样式**（`liststyle.ts`）：列表节点的 `listStyle`，页面上是 `list-style-type`：项目符号 circle、square（默认实心圆），编号 lower-alpha、upper-alpha、lower-roman、upper-roman、cjk-ideographic（默认 1. 2. 3.）。`setListStyle(type, style)` 改光标所在的最里面那层；工具栏「列表」「编号」旁边的小三角选，还不是这种列表时先变过去。
 - **表格列宽**：`TableKit` 开了 `resizable`，鼠标靠近竖线出现蓝线，拖动改的是这一列每个格子的 `colwidth`。行高跟着内容走，拖不了。
 - **深色模式**（`doc.css`）：有底纹、没设文字颜色的字换成深色；设了颜色、没有底纹的字调亮一些。
-- **导出 Word**（`export.ts`）：对齐写成段落的对齐，颜色、底纹（字符底纹）、字号（半磅）、字体（第一个名字）写到每段文字上；列表每种（样式、起始号）一份编号定义，每个编号列表一个实例，各自从 1（或起始号）编（以前所有编号列表接着编号）；拖过列宽的表格按那个宽度、固定列宽（太宽时按 A4 正文宽度缩），没拖过的铺满；合并的行也带上。Markdown 表示不了这些，照旧只有文字。
+- **导出 Word**（`export.ts`）：对齐写成段落的对齐，行距写成多倍行距，颜色、底纹（字符底纹）、字号（半磅）、字体（第一个名字）写到每段文字上；列表每种（样式、起始号）一份编号定义，每个编号列表一个实例，各自从 1（或起始号）编（以前所有编号列表接着编号）；拖过列宽的表格按那个宽度、固定列宽（太宽时按 A4 正文宽度缩），没拖过的铺满；合并的行也带上。Markdown 表示不了这些，照旧只有文字。
 - 平台那一份（`src/features/docs/schema.ts`）有同样的样式和属性，服务端做协同转换时才不丢；`content.ts` 的 `cleanDoc` 再按格式清洗一遍（这些值会写进页面的 style 属性）。
 
 ## 图片
@@ -132,9 +134,9 @@ Word 的标题（`headings.ts`，2026-11-10：用户拿一份别的系统导出�
 
 ## 工具栏
 
-段落样式、字体、字号、加粗、斜体、文字颜色、底纹、对齐、列表、编号（旁边的小三角选样式）、表格（插入；在表格里时加行、加列、删行、删列、删除表格）、图片（选文件，能选几张；见「图片」）、链接（有选中文字就加链接，没有就把地址插进去；已是链接时可以去掉）、撤销、重做。只读时不显示工具栏。按钮多，宽度不到 1120 像素时按钮上只留图标（鼠标停上去有说明），再窄就换行。
+段落样式（设标题时一行一个，见「目录」）、字体、字号、加粗、斜体、文字颜色、底纹、对齐、行距、列表、编号（旁边的小三角选样式）、表格（插入；在表格里时加行、加列、删行、删列、删除表格）、图片（选文件，能选几张；见「图片」）、链接（有选中文字就加链接，没有就把地址插进去；已是链接时可以去掉）、撤销、重做。只读时不显示工具栏。按钮多，宽度不到 1120 像素时按钮上只留图标（鼠标停上去有说明），再窄就换行。
 
-颜色、底纹、对齐和列表样式是按钮加弹出的面板（`format.tsx` 的 `Drop`）：面板挂在按钮下面（右边放不下时贴着按钮右边），点外面、按 Esc、切到别的窗口时收起；按下按钮和面板时不抢正文的焦点，选中的文字一直显示着。工具栏的层级压在正文里的浮动按钮（目录、评论）上面，面板才不被挡。
+颜色、底纹、对齐、行距和列表样式是按钮加弹出的面板（`format.tsx` 的 `Drop`）：面板挂在按钮下面（右边放不下时贴着按钮右边），点外面、按 Esc、切到别的窗口时收起；按下按钮和面板时不抢正文的焦点，选中的文字一直显示着。工具栏的层级压在正文里的浮动按钮（目录、评论）上面，面板才不被挡。
 
 开发时（`import.meta.env.DEV`）`window.__editor` 是当前的 Tiptap 实例，截图脚本和调试用。
 

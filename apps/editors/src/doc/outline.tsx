@@ -5,29 +5,17 @@
  * 开着还是关着按人记在本机（localStorage），没设过时宽屏、有三个以上标题才默认打开。
  * 点了跳过去（jump.ts）：跳过去以后几秒内有图片加载出来（懒加载的图没写宽高时会把正文往下挤）就重新对准那个标题，自己动了滚动就不再管。
  * 标题一到六级（2026-10-27 用户说文档会用到五级、六级标题），按级别缩进。
- * AI 识别目录（2026-11-10，aioutline.tsx）：能改的人在目录头上有「AI 识别目录」；一个标题都没有时目录也打得开（只对能改的人），里面说明怎么才有目录
+ * AI 识别目录（2026-11-10，aioutline.tsx）：能改的人在目录头上有「AI 识别目录」；一个标题都没有时目录也打得开（只对能改的人），里面说明怎么才有目录。
+ * 标题里有软换行的按行列出来，每行一项（toc.ts，2026-11-25：两行看着是两个标题，目录里只有一项、字还连在一起）
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import type { Node as PmNode } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';
 import { Icon, cx } from '../shell/ui';
 import { T } from './i18n';
-import { jumpToPos } from './jump';
+import { jumpToPos, topAt } from './jump';
+import { tocOf, type TocItem } from './toc';
 
-export interface TocItem { pos: number; level: number; text: string; key: string }
-
-/** 正文的目录：顶层的一到六级标题。key 由级别、文字和同名的第几个组成，编辑时收起状态不乱 */
-export function tocOf(doc: PmNode): TocItem[] {
-  const out: TocItem[] = [], seen = new Map<string, number>();
-  doc.forEach((node, offset) => {
-    if (node.type.name !== 'heading') return;
-    const level = Math.min(6, Math.max(1, Number(node.attrs.level) || 1)), text = node.textContent.replace(/\s+/g, ' ').trim();
-    const base = `${level}:${text}`, n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    out.push({ pos: offset, level, text, key: `${base}#${n}` });
-  });
-  return out;
-}
+export { tocOf, type TocItem } from './toc';
 
 /**
  * 目录跟着正文变：改动停下来一会儿再算，几百个标题的长文档打字时不卡。
@@ -47,7 +35,7 @@ export function useToc(editor: Editor | null): { items: TocItem[]; body: boolean
       setBody(editor.state.doc.childCount >= 3);
       setItems((cur) => {
         if (cur.length !== next.length || cur.some((it, i) => it.key !== next[i].key)) return next;
-        cur.forEach((it, i) => { it.pos = next[i].pos; });
+        cur.forEach((it, i) => { it.pos = next[i].pos; it.at = next[i].at; });
         return cur;
       });
     };
@@ -95,12 +83,6 @@ export function useTocOpen(count: number, wide: boolean, allowEmpty = false): [b
   return [open && (count > 0 || allowEmpty), set];
 }
 
-/** 正文滚动容器里某个位置的标题现在离容器顶上多远 */
-function topOf(editor: Editor, box: HTMLElement, pos: number): number | null {
-  const dom = editor.view.nodeDOM(pos);
-  return dom instanceof HTMLElement ? dom.getBoundingClientRect().top - box.getBoundingClientRect().top : null;
-}
-
 /** ai：「AI 识别目录」（能改的人才有）：busy 是进行到哪了，run 开始 */
 export function Outline({ editor, items, box, wide, ai, onClose }: { editor: Editor; items: TocItem[]; box: RefObject<HTMLDivElement | null>; wide: boolean; ai?: { busy: string | null; run: () => void } | null; onClose: () => void }) {
   const [cur, setCur] = useState(-1), [folded, setFolded] = useState<Set<string>>(() => new Set());
@@ -115,7 +97,7 @@ export function Outline({ editor, items, box, wide, ai, onClose }: { editor: Edi
       raf = 0;
       let lo = 0, hi = items.length - 1, at = -1;
       while (lo <= hi) {
-        const mid = (lo + hi) >> 1, t = topOf(editor, el, items[mid].pos);
+        const mid = (lo + hi) >> 1, t = editor.isDestroyed ? null : topAt(editor.view, el, items[mid].at);
         if (t !== null && t <= 72) { at = mid; lo = mid + 1; } else hi = mid - 1;
       }
       setCur(at);
@@ -151,7 +133,7 @@ export function Outline({ editor, items, box, wide, ai, onClose }: { editor: Edi
   }, [curShown]);
 
   const go = (it: TocItem) => {
-    if (!editor.isDestroyed) jumpToPos(editor.view, it.pos);
+    if (!editor.isDestroyed) jumpToPos(editor.view, it.at);
     if (!wide) onClose();
   };
   const toggle = (key: string) => setFolded((f) => { const n = new Set(f); if (n.has(key)) n.delete(key); else n.add(key); return n; });

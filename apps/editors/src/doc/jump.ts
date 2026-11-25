@@ -3,7 +3,8 @@
  * 2026-10-27 深圳同事反馈：Word 转成在线版以后点「第十四章，14.2 基础设置」这种链接，落点不对——书签是对的，
  * 是一路上几百张懒加载、没写宽高的图片：跳的时候它们按 0 高度算，到了以后附近的图陆续加载，把目标往下挤走了。
  * 所以跳过去以后几秒内盯着：有图片加载出来、正文高度变了就重新对准；本人滚动、点击、按键以后不再管。
- * 离得远时直接到（一路滑过去会把途中懒加载的图都拉下来），近的平滑滚
+ * 离得远时直接到（一路滑过去会把途中懒加载的图都拉下来），近的平滑滚。
+ * 位置也可以在一段文字中间：标题里有软换行时目录按行列出来，第二行跳到第二行（toc.ts，2026-11-25）
  */
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -18,17 +19,22 @@ let stopPin: (() => void) | null = null;
 /** 正文的滚动容器：编辑器外壳的 .ed-body，没有时是整页 */
 const scrollerOf = (view: EditorView): HTMLElement => (view.dom.closest('.ed-body') as HTMLElement | null) ?? (document.scrollingElement as HTMLElement);
 
-/** 位置 pos 那一块离滚动容器顶上多远；找不到返回 null */
-function topOf(view: EditorView, box: HTMLElement, pos: number): number | null {
+/**
+ * 位置 pos 离滚动容器顶上多远；找不到返回 null。pos 是一块的开头时量那一块；在一段文字中间（标题的第二行，见 toc.ts）时量那个字所在的行
+ */
+export function topAt(view: EditorView, box: HTMLElement, pos: number): number | null {
   if (view.isDestroyed) return null;
-  const dom = view.nodeDOM(pos);
-  if (!(dom instanceof HTMLElement)) return null;
   const boxTop = box === document.scrollingElement ? 0 : box.getBoundingClientRect().top;
-  return dom.getBoundingClientRect().top - boxTop;
+  const $p = view.state.doc.resolve(Math.min(pos, view.state.doc.content.size));
+  if (!$p.parent.inlineContent) {
+    const dom = view.nodeDOM(pos);
+    return dom instanceof HTMLElement ? dom.getBoundingClientRect().top - boxTop : null;
+  }
+  try { return view.coordsAtPos(pos, 1).top - boxTop; } catch { return null; }
 }
 
 function align(view: EditorView, box: HTMLElement, pos: number, smooth: boolean): void {
-  const top = topOf(view, box, pos);
+  const top = topAt(view, box, pos);
   if (top === null) return;
   const far = Math.abs(top) > box.clientHeight * 3;
   box.scrollTo({ top: box.scrollTop + top - MARGIN, behavior: smooth && !far ? 'smooth' : 'auto' });

@@ -27,7 +27,7 @@ import { useAiOutline } from './aioutline';
 import { DocComments } from './comments';
 import { contentOf, paragraphsOf, plainOf, type DocNode } from './content';
 import { toDocx, toMarkdown } from './export';
-import { AlignPick, ColorPick, FontPick, ListPick, SizePick } from './format';
+import { AlignPick, ColorPick, FontPick, LineHeightPick, ListPick, SizePick } from './format';
 import { T } from './i18n';
 import { imageSize, placeImages } from './images';
 import { importToHtml, titleOf } from './import';
@@ -36,6 +36,7 @@ import { ImageResizer } from './imgsize';
 import { caretAfterImage, imagePaste, imagesIn, type HtmlPaste, type PasteHandlers } from './paste';
 import { InlineImages } from './inline-images';
 import { Outline, TOC_WIDE, TocButton, tocOf, useToc, useTocOpen, useWide, type TocItem } from './outline';
+import { setHeadingLines } from './toc';
 import { Y_FIELD, Y_TITLE, schemaExtensions } from './schema';
 import './doc.css';
 
@@ -50,6 +51,7 @@ const SELECTION_EVERY = 300;
  * 协同时告诉服务端这个编辑器认得哪一版的文档结构（地址参数 v）。结构里加了新的样式时加一，平台 src/server/modules/docs/collab.ts 的 COLLAB_V 跟着改：
  * 旧版的编辑器遇到不认识的样式会把那一段文字删掉，所以发布以后还开着的旧页面连不上协同，提示刷新。
  * 2：字体、字号、颜色、底纹、对齐、列表样式（2026-10-27）
+ * 只加节点属性时可以不加：旧页面建节点时不认识的属性直接忽略、不删内容（行距 lineHeight，2026-11-25，没加），见 README「两种模式」
  */
 const COLLAB_V = '2';
 const placeholder = () => Placeholder.configure({ placeholder: '从这里开始写……' });
@@ -110,12 +112,18 @@ function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => voi
     }),
   });
   const c = () => editor.chain().focus();
+  /** 段落样式：设成标题时一行一个标题（段里有软换行的先拆开，toc.ts）；列表项的第一段这种不能直接换的照旧用 setHeading（先挪出列表） */
+  const setBlock = (v: string) => {
+    if (v === 'p') { c().setParagraph().run(); return; }
+    const level = Number(v.slice(1)) as 1 | 2 | 3 | 4 | 5 | 6;
+    if (!c().command(({ tr, state }) => setHeadingLines(tr, state.schema.nodes.heading, level)).run()) c().setHeading({ level }).run();
+  };
   return (
     <Toolbar right={<>
       <button type="button" className="tt" onClick={() => c().undo().run()} disabled={!st.undo} title="撤销（Ctrl+Z）"><Icon name="undo" /><span className="lbl">撤销</span></button>
       <button type="button" className="tt" onClick={() => c().redo().run()} disabled={!st.redo} title="重做（Ctrl+Shift+Z）"><Icon name="redo" /><span className="lbl">重做</span></button>
     </>}>
-      <Select aria-label="段落样式" title="段落样式" value={st.block} onChange={(v) => (v === 'p' ? c().setParagraph().run() : c().toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 | 4 | 5 | 6 }).run())} options={[['p', '正文'], ['h1', '标题 1'], ['h2', '标题 2'], ['h3', '标题 3'], ['h4', '标题 4'], ['h5', '标题 5'], ['h6', '标题 6']]} />
+      <Select aria-label="段落样式" title="段落样式" value={st.block} onChange={setBlock} options={[['p', '正文'], ['h1', '标题 1'], ['h2', '标题 2'], ['h3', '标题 3'], ['h4', '标题 4'], ['h5', '标题 5'], ['h6', '标题 6']]} />
       <FontPick editor={editor} />
       <SizePick editor={editor} />
       <span className="sep" />
@@ -125,6 +133,7 @@ function Tools({ editor, onImage, onLink }: { editor: Editor; onImage: () => voi
       <ColorPick editor={editor} kind="bg" />
       <span className="sep" />
       <AlignPick editor={editor} />
+      <LineHeightPick editor={editor} />
       <span className="sep" />
       {/* 列表、编号：按钮本身是开关，旁边的小三角选样式 */}
       <span className="fmt-split">
@@ -167,7 +176,7 @@ function LinkDialog({ editor, onClose }: { editor: Editor; onClose: () => void }
   const [href, setHref] = useState<string>(String(editor.getAttributes('link').href ?? ''));
   const [q, setQ] = useState('');
   const had = editor.isActive('link');
-  const heads = useMemo(() => tocOf(editor.state.doc), [editor]);
+  const heads = useMemo(() => tocOf(editor.state.doc, false), [editor]);
   // 正在改的链接指向文档里的哪个标题（高亮它）
   const curPos = useMemo(() => { const name = anchorOfHref(href); const hit = name ? findAnchor(editor.state.doc, name) : null; return hit?.node.type.name === 'heading' ? hit.pos : -1; }, [editor, href]);
   const shown = useMemo(() => { const k = q.trim().toLowerCase(); return k ? heads.filter((h) => h.text.toLowerCase().includes(k)) : heads; }, [heads, q]);

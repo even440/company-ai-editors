@@ -2,6 +2,7 @@
  * 文档的自测。一是导入时认标题（apps/editors/src/doc/headings.ts 的 outlineHeadings、prepareDocx）：
  * Word 的标题不一定用叫 heading 1～6 的样式——段落自己写大纲级别、样式起了别的名字、样式是「基于」标题样式建的，都要认成标题。
  * 二是粘贴带图的内容时，从同一次复制的 RTF、从 data: 地址里取出图片本身（images.ts 的 rtfImages、dataImage）。
+ * 三是标题里的软换行（toc.ts，2026-11-25）：目录按行列出来，设标题时按行拆开；还有行距（lineheight.ts）认哪些值。
  * 这个仓库没有测试框架，直接用 Node 跑 TypeScript 源码（要 Node 22.15 以上）：
  *   node --experimental-strip-types tools/check-doc.mjs
  * 全部通过时最后一行是「全部通过（N 组）」，有不过的会列出来、退出码是 1。里面的文字都是编的。
@@ -146,6 +147,76 @@ await t('data: 地址里的图片：base64 和直接写的都认，不是图片�
   assert.equal(dataImage('data:text/html;base64,PGI+eDwvYj4='), null);
   assert.equal(dataImage('data:image/png;base64,***'), null);
   assert.equal(dataImage('https://example.com/a.png'), null);
+});
+
+/* ---------- 标题里的软换行、行距 ---------- */
+
+const { Schema } = await import(require.resolve('@tiptap/pm/model'));
+const { EditorState, TextSelection } = await import(require.resolve('@tiptap/pm/state'));
+const { tocOf, setHeadingLines } = await import(ED + 'toc.ts');
+const { lineHeightOf, lineCss } = await import(ED + 'lineheight.ts');
+// 和编辑器里一样的几种块（属性只放用得到的）
+const sch = new Schema({
+  nodes: {
+    doc: { content: 'block+' }, text: { group: 'inline' },
+    paragraph: { group: 'block', content: 'inline*', attrs: { textAlign: { default: null }, anchor: { default: null }, lineHeight: { default: null } } },
+    heading: { group: 'block', content: 'inline*', attrs: { level: { default: 1 }, textAlign: { default: null }, anchor: { default: null }, lineHeight: { default: null } } },
+    hardBreak: { group: 'inline', inline: true, selectable: false },
+    bulletList: { group: 'block', content: 'listItem+' }, listItem: { content: 'paragraph block*' },
+  },
+});
+/** 一段：字符串之间放软换行 */
+const lines = (type, attrs, ...ts) => sch.node(type, attrs, ts.flatMap((x, i) => [...(i ? [sch.node('hardBreak')] : []), ...(x ? [sch.text(x)] : [])]));
+const shape = (doc) => { const out = []; doc.forEach((b) => out.push([b.type.name === 'heading' ? `h${b.attrs.level}` : b.type.name, b.textContent, b.attrs.anchor ?? null, b.attrs.lineHeight ?? null])); return out; };
+
+await t('目录：标题里有软换行时每行一项，第二行跳到第二行开头；链接弹窗里还是一个标题一项', () => {
+  const doc = sch.node('doc', null, [lines('heading', { level: 1 }, '1、收银台优惠', '2、门店要货'), lines('heading', { level: 1 }, '3、员工交通补贴'), lines('paragraph', null, '正文')]);
+  const toc = tocOf(doc);
+  assert.deepEqual(toc.map((i) => [i.level, i.text]), [[1, '1、收银台优惠'], [1, '2、门店要货'], [1, '3、员工交通补贴']]);
+  // 第一行是标题本身的位置；第二行是那一行第一个字的位置
+  assert.equal(toc[0].pos, 0); assert.equal(toc[0].at, 0); assert.equal(toc[1].pos, 0);
+  assert.equal(doc.textBetween(toc[1].at, toc[1].at + 2), '2、');
+  assert.equal(toc[2].pos, doc.child(0).nodeSize);
+  assert.deepEqual(tocOf(doc, false).map((i) => i.text), ['1、收银台优惠 2、门店要货', '3、员工交通补贴']);
+});
+await t('目录：空行、只有空格的行不单独列；没有字的标题还是一项', () => {
+  const doc = sch.node('doc', null, [lines('heading', { level: 2 }, '', '甲', ' ', '', '乙', ''), lines('heading', { level: 3 })]);
+  assert.deepEqual(tocOf(doc).map((i) => [i.text, i.at === i.pos]), [['甲', true], ['乙', false], ['', true]]);
+});
+
+/** 在 doc 上选中 from..to，设成 level 级标题，返回改完的文档和光标所在的那一块的文字 */
+const setH = (doc, from, to, level) => {
+  const state = EditorState.create({ doc, selection: TextSelection.create(doc, from, to) }), tr = state.tr;
+  const ok = setHeadingLines(tr, sch.nodes.heading, level);
+  return { ok, doc: tr.doc, at: tr.selection.$from.parent.textContent };
+};
+await t('设成标题：段里的软换行拆成几个标题，对齐和行距留着、书签只在第一行，光标跟着原来那行', () => {
+  const doc = sch.node('doc', null, [lines('paragraph', { textAlign: 'center', anchor: 'h_a', lineHeight: 1.5 }, '1、收银台优惠', '2、门店要货'), lines('paragraph', null, '3、员工交通补贴')]);
+  // 光标在「门店」那一行，选到第三段
+  const r = setH(doc, 12, doc.content.size - 2, 1);
+  assert.ok(r.ok);
+  assert.deepEqual(shape(r.doc), [['h1', '1、收银台优惠', 'h_a', 1.5], ['h1', '2、门店要货', null, 1.5], ['h1', '3、员工交通补贴', null, null]]);
+  assert.equal(r.doc.child(1).attrs.textAlign, 'center');
+  assert.equal(r.at, '2、门店要货');
+  assert.equal(tocOf(r.doc).length, 3);
+});
+await t('设成标题：只有光标、没选范围时整段都拆；空行、开头结尾的软换行直接去掉，不留空标题', () => {
+  const doc = sch.node('doc', null, [lines('paragraph', null, '', '甲', '', '', '乙', '')]);
+  const r = setH(doc, 3, 3, 2);
+  assert.deepEqual(shape(r.doc), [['h2', '甲', null, null], ['h2', '乙', null, null]]);
+});
+await t('设成标题：已经是标题的改级别也拆开；列表项的第一段交给 setHeading（返回 false、什么都不动）', () => {
+  const doc = sch.node('doc', null, [lines('heading', { level: 1 }, '一', '二')]);
+  assert.deepEqual(shape(setH(doc, 1, 1, 3).doc), [['h3', '一', null, null], ['h3', '二', null, null]]);
+  const list = sch.node('doc', null, [sch.node('bulletList', null, [sch.node('listItem', null, [lines('paragraph', null, '条目', '第二行')])])]);
+  const r = setH(list, 4, 4, 1);
+  assert.equal(r.ok, false);
+  assert.ok(r.doc.eq(list));
+});
+await t('行距：只认工具栏上那几种（数字或字符串），页面上按单倍 1.3 换算', () => {
+  assert.deepEqual([1, '1.15', 1.5, '2', 2.5, 3].map(lineHeightOf), [1, 1.15, 1.5, 2, 2.5, 3]);
+  assert.deepEqual([1.6, '24px', '', null, '150%', 0].map(lineHeightOf), [null, null, null, null, null, null]);
+  assert.deepEqual([1, 1.15, 1.5, 3].map(lineCss), ['1.3', '1.495', '1.95', '3.9']);
 });
 
 console.log(process.exitCode ? '有没通过的' : `全部通过（${n} 组）`);

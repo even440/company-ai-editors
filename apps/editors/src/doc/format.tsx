@@ -1,11 +1,13 @@
 /**
  * 工具栏上的格式（2026-10-27，同事反馈：没有常用的对齐方式，改不了字体、字号、字的颜色，不能加底纹，列表、编号只有一种样式）。
+ * 行距（2026-11-25，用户：「找不到设置行间距的功能」）挨着对齐，见 lineheight.ts。
  * 字体、字号是下拉框；文字颜色、底纹、对齐、列表和编号的样式是按钮加弹出的面板（Drop）。
  * 面板挂在按钮下面，点外面、按 Esc、切到别的窗口时收起；按下时不抢正文的焦点，选中的文字一直显示着
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useEditorState, type Editor } from '@tiptap/react';
 import { Icon, Select, cx } from '../shell/ui';
+import { LINE_HEIGHTS } from './lineheight';
 import { listStyleAt } from './liststyle';
 import { ALIGNS, BG_COLORS, FONTS, SIZES, TEXT_COLORS, fontLabel, hexOf, type Align } from './textstyle';
 
@@ -107,6 +109,27 @@ export function AlignPick({ editor }: { editor: Editor }) {
           <Icon name={`align${a}`} />{ALIGN_TEXT[a][0]}<kbd>{shortcut(ALIGN_TEXT[a][1])}</kbd>
         </button>
       ))}
+    </Drop>
+  );
+}
+
+/* ---------- 行距 ---------- */
+
+/** 行距的写法：1.0、1.15、1.5、2.0（和 Word、WPS 的行距按钮一样） */
+const lineLabel = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
+
+/** 面板上是「默认」加几种多倍行距；选中的几段行距不一样时哪个都不勾 */
+export function LineHeightPick({ editor }: { editor: Editor }) {
+  const cur = useEditorState({ editor, selector: ({ editor: e }) => LINE_HEIGHTS.find((v) => e.isActive({ lineHeight: v })) ?? null });
+  const set = (v: number | null) => editor.chain().focus().setLineHeight(v).run();
+  return (
+    <Drop title={cur === null ? '行距' : `行距：${lineLabel(cur)}`} label={<Icon name="lineheight" />}>
+      {(close) => <>
+        <button type="button" role="menuitemradio" aria-checked={cur === null} className={cx('fmt-i', cur === null && 'on')} onClick={() => { set(null); close(); }}>默认</button>
+        {LINE_HEIGHTS.map((v) => (
+          <button key={v} type="button" role="menuitemradio" aria-checked={cur === v} className={cx('fmt-i', cur === v && 'on')} onClick={() => { set(v); close(); }}>{lineLabel(v)}</button>
+        ))}
+      </>}
     </Drop>
   );
 }
