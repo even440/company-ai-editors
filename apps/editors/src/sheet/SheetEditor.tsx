@@ -134,8 +134,12 @@ export function SheetEditor({ session: s }: { session: Session }) {
       const r0 = sh0?.getSelection()?.getActiveRange();
       const sel = r0 ? [r0.getRow(), r0.getColumn(), r0.getHeight(), r0.getWidth()] as const : null;
       const scroll = sheetId ? old?.getScrollStateBySheetId(sheetId) : null;
+      const backup = old ? old.save() : null;
       if (old) api.disposeUnit(old.getId());
-      const wb = load(data);
+      let wb: FWorkbook;
+      // 新内容建不起来：把原来的装回去再报错（不然界面空着，取内容、保存都会出错；会话连续几次换不上会提示刷新）
+      try { wb = load(data); }
+      catch (e) { if (backup && !api.getActiveWorkbook()) load(backup); throw e; }
       const target = sheetId ? wb.getSheetBySheetId(sheetId) : null;
       if (target) wb.setActiveSheet(target);
       const sh = wb.getActiveSheet();

@@ -47,7 +47,7 @@ const BUSY_RETRY = 400, BUSY_MAX = 15_000;
 const POINTER_STALE = 10_000;
 /** 取最新内容失败（网络）隔多久再试；编辑器换内容出错隔多久再试、连续几次就退回提示刷新 */
 const FETCH_RETRY = 10_000, APPLY_RETRY = 5000, APPLY_GIVE_UP = 3;
-/** 编辑器换内容时出的错（和取内容的网络错误分开算） */
+/** 编辑器这边出的错：取自己的内容、换内容（和取最新内容的网络错误分开算） */
 class ApplyError extends Error {}
 export type Theme = 'light' | 'dark';
 
@@ -196,7 +196,10 @@ export class Session {
       finally { this.waitingBusy = false; this.forceApply = false; }
       if (latest.version <= this.version) return; // 等的时候自己存过了（页面切到后台时会立刻存）
     }
-    const mine = jsonClone(h.snapshot().content);
+    let mine: unknown;
+    // 取自己的内容出错也算编辑器的错（比如表格重建到一半失败、工作簿没了），连续几次就提示刷新，不当成网络错误一直重试
+    try { mine = jsonClone(h.snapshot().content); }
+    catch (e) { throw new ApplyError(`读取当前内容失败：${e instanceof Error ? e.message : String(e)}`); }
     const theirs = latest.content;
     const local = this.synced !== undefined && !same(mine, this.synced);
     const next = local ? merge3(this.synced, mine, theirs) : theirs;
