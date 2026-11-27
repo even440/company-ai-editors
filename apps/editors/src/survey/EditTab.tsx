@@ -1,6 +1,6 @@
 /** 编辑页签：说明、题目列表（题型、选项、必答、上下移动、复制、删除）、添加各题型 */
 import { Icon, Select, TT, Toggle, cx, toast } from '../shell/ui';
-import { Editable } from './Editable';
+import { Editable, EditableArea } from './Editable';
 import { T } from './i18n';
 import { QT, QTYPES, defaultOpts, hasOpts, newQuestion, qid, type QType, type SurveyContent } from './model';
 
@@ -15,7 +15,7 @@ export function EditTab({ c, ro, update }: Props) {
   const addOpt = (i: number) => update((c) => { const o = c.qs[i].opts!; o.push(T.opt(o.length + 1)); });
 
   return <div className="sv-edit">
-    <div className="sv-desc"><span className="muted">{T.desc}</span><Editable tag="div" className="sv-desc-t" label={T.descLabel} ph={T.descPh} value={c.desc} disabled={ro} onChange={(v) => update((c) => { c.desc = v; })} /></div>
+    <div className="sv-desc"><span className="muted">{T.desc}</span><EditableArea className="sv-desc-t" label={T.descLabel} ph={T.descPh} value={c.desc} disabled={ro} onChange={(v) => update((c) => { c.desc = v; })} /></div>
     {c.qs.map((q, i) => <div className="sv-q" key={q.id} data-q={q.id}>
       <div className="sv-qh">
         <span className="sv-n">{i + 1}</span>

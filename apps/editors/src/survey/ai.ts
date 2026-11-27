@@ -96,7 +96,7 @@ export function parseQuestions(text: string): { desc: string; qs: Question[] } |
     }
     return { ...newQuestion(type, d.title, opts), req: d.req };
   });
-  return qs.length ? { desc: desc.join(' ').slice(0, 500), qs } : null;
+  return qs.length ? { desc: desc.join('\n').slice(0, 500), qs } : null;
 }
 
 /** 还只有一道没改过的默认题（新建的问卷）：AI 出的题直接替换它 */

@@ -29,7 +29,7 @@ export function FillTab({ title, c, collecting, blocked, fillMode, onSubmit }: P
   const dis = !!blocked;
   return <form className="sv-fill" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
     <h2>{title}</h2>
-    {c.desc ? <p className="muted">{c.desc}</p> : null}
+    {c.desc ? <p className="muted sv-desc-p">{c.desc}</p> : null}
     {blocked ? <div className="note warn">{blocked}</div> : !collecting ? <div className="note warn">{T.previewNote}</div> : null}
     {c.qs.map((q, i) => <div className="sv-fq" key={q.id} id={'fq-' + q.id}>
       <b>{i + 1}. {q.t}{q.req ? <i className="sv-req" title={T.req}>*</i> : null}</b>

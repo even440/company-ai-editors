@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from 'react';
 import { CommandType, LocaleType, createUniver, defaultTheme, mergeLocales, type FUniver, type IWorkbookData } from '@univerjs/presets';
 import { UniverSheetsCorePreset, WorkbookPermissionService, type FWorkbook } from '@univerjs/preset-sheets-core';
 import zhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
+import { UniverSheetsFindReplacePreset } from '@univerjs/preset-sheets-find-replace';
+import findZhCN from '@univerjs/preset-sheets-find-replace/locales/zh-CN';
 import { safeName, type Session } from '@cai/bridge';
 import { useHost, useTheme } from '../shell/session';
 import { Icon, Toaster, toast } from '../shell/ui';
@@ -64,10 +66,12 @@ export function SheetEditor({ session: s }: { session: Session }) {
     if (!el) return;
     const { univer, univerAPI: api } = createUniver({
       locale: LocaleType.ZH_CN,
-      locales: { [LocaleType.ZH_CN]: mergeLocales(zhCN) },
+      locales: { [LocaleType.ZH_CN]: mergeLocales(zhCN, findZhCN) },
       theme: defaultTheme,
       darkMode: s.theme === 'dark',
-      presets: [UniverSheetsCorePreset({ container: el })],
+      // 查找替换（用户 2026-11-27：「表格格式，快捷键 command+f 不可搜索」——格子是画在画布上的，浏览器自带的查找找不到）：
+      // ⌘F / Ctrl+F 查找，面板里「替换 / 高级查找」能替换；只读时替换被工作簿权限挡住（提示「替换失败」，格子不变、不保存）
+      presets: [UniverSheetsCorePreset({ container: el }), UniverSheetsFindReplacePreset()],
     });
     inst.current = api;
     // 开发时把 API 挂到 window 上，截图脚本和控制台调试用；正式构建里没有

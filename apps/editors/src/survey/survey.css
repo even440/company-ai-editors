@@ -4,6 +4,12 @@
 .sv-qh b:empty::before, .sv-opt span:empty::before, .sv-desc-t:empty::before { content: attr(data-ph); color: var(--ink-3); }
 .sv-qh b[contenteditable="false"], .sv-opt span[contenteditable="false"], .sv-desc-t[contenteditable="false"] { cursor: default; }
 .sv-qh b:focus { background: var(--surface-2); }
+/* 说明是多行输入框：看上去和别处的可编辑文字一样（没有边框），跟着内容长高；填写页的说明照写的分行 */
+textarea.sv-desc-t { display: block; width: 100%; box-sizing: border-box; resize: none; overflow: hidden; border: 0; background: transparent; font: inherit; line-height: 1.6; }
+textarea.sv-desc-t::placeholder { color: var(--ink-3); }
+textarea.sv-desc-t:focus { background: var(--surface-2); }
+textarea.sv-desc-t[readonly] { cursor: default; }
+.sv-desc-p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sv-opt-add { align-self: flex-start; }
 .sv-fq > b { font-weight: 600; }
 .sv-fq .select { align-self: flex-start; min-width: 200px; }
