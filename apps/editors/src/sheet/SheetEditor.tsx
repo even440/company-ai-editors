@@ -10,11 +10,12 @@ import { UniverSheetsCorePreset, WorkbookPermissionService, type FWorkbook } fro
 import zhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import { UniverSheetsFindReplacePreset } from '@univerjs/preset-sheets-find-replace';
 import findZhCN from '@univerjs/preset-sheets-find-replace/locales/zh-CN';
-import { safeName, type Session } from '@cai/bridge';
+import { safeName, type Live, type Session } from '@cai/bridge';
 import { useHost, useTheme } from '../shell/session';
 import { Icon, Toaster, toast } from '../shell/ui';
 import { SheetComments } from './comments';
 import { centerMerged, csvBlob, emptyWorkbook, fromSheetJS, isWorkbookData, lastRowOf, plainOf, readSpreadsheet, withRoom, xlsxBlob } from './convert';
+import { applyCells, cellChanges } from './live';
 import { centerOnMerge } from './merge';
 
 /** 这些 mutation 不改内容（渲染时算行高、过滤器脏标记、权限点、空操作），不算改动 */
@@ -114,6 +115,7 @@ export function SheetEditor({ session: s }: { session: Session }) {
     };
     let permissionInit: { unsubscribe(): void } | null = null;
     let mergeCenter: { dispose(): void } | null = null;
+    let liveOn = false;
     const load = (data: IWorkbookData) => {
       settling = true;
       // 行列补到铺满屏幕（按屏幕宽度算，窗口以后拉大也够）；合并的格子没设过对齐的居中
@@ -121,10 +123,39 @@ export function SheetEditor({ session: s }: { session: Session }) {
       permissionInit ??= watchPermissionInit();
       mergeCenter ??= centerOnMerge(univer);
       cmt.attach(wb);
-      setTimeout(() => { settling = false; }, 800);
+      // 第一次装好、Univer 自己的改动跑完以后接上「别人的改动合并进来」：这时的样子算和服务器一致
+      setTimeout(() => { settling = false; if (!liveOn && !disposed) { liveOn = true; s.live(live); } }, 800);
       return wb;
     };
     const fallback = () => emptyWorkbook(s.docId, s.doc.title);
+    /** 结构变了（行列、合并、工作表……）：整个工作簿重建，恢复当前工作表、选中区域、滚动位置 */
+    const recreate = (data: IWorkbookData) => {
+      const old = api.getActiveWorkbook(), sh0 = old?.getActiveSheet(), sheetId = sh0?.getSheetId();
+      const r0 = sh0?.getSelection()?.getActiveRange();
+      const sel = r0 ? [r0.getRow(), r0.getColumn(), r0.getHeight(), r0.getWidth()] as const : null;
+      const scroll = sheetId ? old?.getScrollStateBySheetId(sheetId) : null;
+      if (old) api.disposeUnit(old.getId());
+      const wb = load(data);
+      const target = sheetId ? wb.getSheetBySheetId(sheetId) : null;
+      if (target) wb.setActiveSheet(target);
+      const sh = wb.getActiveSheet();
+      try {
+        if (sel) sh.getRange(sel[0], sel[1], sel[2], sel[3]).activate();
+        if (scroll) sh.scrollToCell(scroll.sheetViewStartRow, scroll.sheetViewStartColumn);
+      } catch { /* 原来的位置在新内容里没有了：停在开头 */ }
+    };
+    /** 别人保存了：合并好的内容换进来（bridge 会话的 live；只改格子还是整个重建见 live.ts）。格子里正在打字时先等一等 */
+    const live: Live = {
+      snapshot,
+      apply: (content) => {
+        const next = isWorkbookData(content) ? content : fallback();
+        const wb = api.getActiveWorkbook();
+        if (!wb) { load(next); return; }
+        const changes = cellChanges(wb.save(), next);
+        if (changes) applyCells(univer, wb.getId(), changes); else recreate(next);
+      },
+      busy: () => !!api.getActiveWorkbook()?.isCellEditing(),
+    };
 
     void (async () => {
       const f = s.doc.importFile;

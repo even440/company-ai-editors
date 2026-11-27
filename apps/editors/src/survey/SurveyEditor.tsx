@@ -47,6 +47,13 @@ export function SurveyEditor({ session: s }: { session: Session }) {
     setLoading(true);
     try { setResponses((await s.client.responses()).responses); } catch (e) { toast(T.loadFail + errMsg(e)); } finally { setLoading(false); }
   };
+  // 别人保存了：合并进来换上（会话的 live）。Editable 只在文字不一样时才改 DOM，正在打的那一项合并后还是自己的，光标不动
+  useEffect(() => {
+    s.live({
+      snapshot: () => ({ content: cRef.current, plain: plainOf(cRef.current) }),
+      apply: (content) => { const next = normalize(content); cRef.current = next; setC(next); },
+    });
+  }, [s]);
   // 打开时先取一次（页签上显示答卷数），进统计页签时再刷新；填写页用不着
   useEffect(() => { if (!fill) void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'stats') void load(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -9,7 +9,7 @@ import { useMemo, useRef, useState } from 'react';
 import { CaptureUpdateAction, Excalidraw, MainMenu, convertToExcalidrawElements, exportToBlob, exportToSvg, getCommonBounds, getSceneVersion, getTextFromElements } from '@excalidraw/excalidraw';
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI, ExcalidrawInitialDataState } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
-import type { Session } from '@cai/bridge';
+import { same, type Session } from '@cai/bridge';
 import { useHost, useTheme } from '../shell/session';
 import { Toaster, toast } from '../shell/ui';
 
@@ -60,12 +60,40 @@ export function BoardEditor({ session: s }: { session: Session }) {
   /** Excalidraw 每次指针移动、选中都会回调；只有内容签名变了才算改动。第一次回调是初始化，记下签名就行 */
   const onChange = (els: readonly ExcalidrawElement[], st: AppState, files: BinaryFiles) => {
     const sig = signature(els, st, files);
-    if (lastSig.current === null) { lastSig.current = sig; return; }
+    if (lastSig.current === null) { lastSig.current = sig; goLive(); return; }
     if (sig === lastSig.current) return;
     lastSig.current = sig;
     if (roRef.current) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(commit, 300);
+  };
+
+  /**
+   * 别人保存了：合并进来换上（会话的 live）。合并结果按元素编号对齐；内容变了的元素版本号加一（Excalidraw 按版本号认元素变没变），
+   * 新图片的附件补进去；不进撤销记录（撤销只退自己的操作）。换完把签名对上，免得当成自己的改动。
+   * 正在画、拖动、改大小、旋转、打字、编辑折线时先等一等。等 Excalidraw 第一次回调（初始内容装好、api 有了）再接上
+   */
+  const goLive = () => {
+    s.live({
+      snapshot,
+      apply: (content) => {
+        const a = api.current;
+        if (!a) return;
+        const c = parse(content) ?? { elements: [], appState: {}, files: {} };
+        const cur = new Map(a.getSceneElementsIncludingDeleted().map((e) => [e.id, e]));
+        const elements = c.elements.map((e) => { const old = cur.get(e.id); return old && !same(old, e) ? { ...e, version: Math.max(e.version, old.version) + 1 } : e; });
+        const have = a.getFiles(), add = Object.values(c.files).filter((f) => f && !have[f.id]);
+        if (add.length) a.addFiles(add);
+        const appState: Record<string, unknown> = {};
+        for (const k of KEEP) if (c.appState[k] !== undefined) appState[k] = c.appState[k];
+        a.updateScene({ elements, appState: appState as Partial<AppState> as AppState, captureUpdate: CaptureUpdateAction.NEVER });
+        lastSig.current = signature(a.getSceneElements(), { ...a.getAppState(), ...appState } as AppState, a.getFiles());
+      },
+      busy: () => {
+        const st = api.current?.getAppState();
+        return !!st && !!(st.newElement || st.resizingElement || st.multiElement || st.editingTextElement || st.editingLinearElement || st.selectionElement || st.selectedElementsAreBeingDragged || st.isResizing || st.isRotating);
+      },
+    });
   };
 
   async function exportAs(format: string) {

@@ -16,6 +16,11 @@ import { THEMES, THEME_KEYS, themeId } from './themes';
 import './mind.css';
 
 const htmlToText = (html: string) => { const d = document.createElement('div'); d.innerHTML = html; return d.innerText; };
+/** 合并后同一个节点可能出现两次（一人把它挪到别处、另一人改了它的文字）：留第一次出现的，后面的连同子节点去掉 */
+function dedupe(root: MNode, seen = new Set<string>()) {
+  if (root.data.uid) seen.add(root.data.uid);
+  root.children = (root.children ?? []).filter((c) => { const u = c.data.uid; if (u && seen.has(u)) return false; dedupe(c, seen); return true; });
+}
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function MindEditor({ session: s }: { session: Session }) {
@@ -121,6 +126,30 @@ export function MindEditor({ session: s }: { session: Session }) {
       else if (m.name === 'expand') { addChildren(EXPAND_CHILDREN); toast('已展开：' + EXPAND_CHILDREN.join('、')); }
     } else if (m.type === 'readonly') { s.doc.readonly = m.value; setRo(s.readonly); }
   });
+
+  // 别人保存了：合并进来换上（会话的 live）。大纲 / 导图模式是各人自己看的方式，不跟着别人换；布局、主题跟着换。
+  // 导图模式用 updateData 换数据，画布位置、缩放不动，撤销记录从换完重新记；导图里正在改节点文字时先等一等
+  useEffect(() => {
+    s.live({
+      snapshot: () => { const root = clean(currentRoot()); return { content: { root, layout: cfg.current.layout, theme: cfg.current.theme, mode: cfg.current.mode }, plain: plainOf(root) }; },
+      apply: (content) => {
+        const n = normalize(content, THEME_KEYS);
+        dedupe(n.root);
+        rootRef.current = n.root;
+        cfg.current.layout = n.layout; setLayoutS(n.layout);
+        cfg.current.theme = n.theme; setThemeS(n.theme);
+        const m = mapRef.current;
+        if (m && cfg.current.mode === 'map') {
+          m.updateData(structuredClone(clean(n.root)));
+          // 撤销记录存的是整棵树：换完从现在重新记，免得撤销时把别人的改动也退掉（之前自己的操作就撤销不了了）
+          const h = (m as unknown as { command?: { clearHistory(): void; addHistory(): void } }).command;
+          h?.clearHistory(); h?.addHistory();
+        }
+        refresh();
+      },
+      busy: () => cfg.current.mode === 'map' && !!mapRef.current?.renderer?.textEdit?.isShowTextEdit?.(),
+    });
+  }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 刚从 .xmind / .opml 导入、还没转换：下载、解析、保存，然后告诉宿主
   useEffect(() => {

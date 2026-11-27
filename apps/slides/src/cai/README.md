@@ -31,3 +31,7 @@ PPTist 本身不动（对上游文件的改动见 `../../CHANGES.md`），和 Co
 - 只读：`App.vue` 在 `caiReadonly` 为真时直接显示放映视图，不进编辑器。
 - 图片：`src/utils/image.ts` 的 `getImageDataURL` 先调 `uploadToHost`，传不了再退回 base64。
 - 导入：`s.doc.importFile` 有值时下载源文件，用 PPTist 的 `importPPTXFile`（pptxtojson）装进 store，保存后 `s.client.imported()`。
+
+## 别人的改动合并进来（2026-11-27）
+
+几个人同时开着时，别人保存后几秒内合并进来（bridge 会话的 `live`，见仓库 README）：页面、页面里的元素都按 `id` 对齐合并；`content.ts` 的 `applyRemote` 换进 store，停在原来那一页（按页面编号找），选中的元素还在就留着，撤销快照清空重记（快照是整份幻灯片，撤销会把别人的改动一起退掉）。正在打字的文字框不用等：PPTist 的文字框有焦点时不会被 store 盖掉，打的字 300 毫秒后写回 store。

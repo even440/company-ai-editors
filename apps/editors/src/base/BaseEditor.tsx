@@ -68,6 +68,16 @@ export function BaseEditor({ session: s }: { session: Session }) {
   const commit = useCallback((fn: (c: B.Table) => M.Content) => commitBook((b) => B.patchTable(b, tidRef.current, fn)), [commitBook]);
   const patchView = useCallback((id: string, patch: Partial<M.View>) => commit((c) => ({ ...c, views: c.views.map((v) => (v.id === id ? { ...v, ...patch } : v)) })), [commit]);
 
+  /* ---------- 别人保存了：合并进来换上（会话的 live）。别人删了正在看的表 / 视图时，上面的取法会退回第一张 ---------- */
+  useEffect(() => {
+    s.live({
+      snapshot: () => ({ content: B.serialize(ref.current), plain: B.plainOfBook(ref.current, usersRef.current) }),
+      apply: (c) => { const next = B.recompute(B.normalizeBook(c), usersRef.current); ref.current = next; setBook(next); },
+      // 表格里正打开着一个格子的输入框：等它收起来（换内容时行可能按排序、筛选挪位置）
+      busy: () => !!document.activeElement?.classList.contains('bs-cellin'),
+    });
+  }, [s]);
+
   /* ---------- 导入 Lark 导出的 .base（平台按扩展名建好这份内容、带着源文件，打开时在这里转换） ---------- */
   useEffect(() => {
     const f = s.doc.importFile; if (!f) return;

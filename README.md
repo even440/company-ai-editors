@@ -30,9 +30,10 @@ npm run typecheck
 见 `packages/bridge/src/protocol.ts`：
 
 - 接口：`GET/PUT/PATCH {api}/api/v1/editor/doc`、`POST …/presence`、`POST …/asset`、`GET …/asset/:id`、`GET …/directory`、`GET …/groups`（多维表格的群组字段用：当前成员在的群 `mine: true`，加上这份内容里已经填着的群的名字 `mine: false`；没有这个接口时编辑器当作一个群都没有）、`POST …/notify`（多维表格的按钮「发消息」：`{ users, groups, text }`，宿主以当前成员的名义发）、`POST …/outline`（文档的「AI 识别目录」：`{ lines: [{ i, t, f }], before }` 是正文里按顺序排的短段落，宿主用自己的模型认出哪些是标题，回 `{ items: [{ i, level }], mock }`；没有这个接口时编辑器提示用不了）、`GET/POST …/responses`、`POST …/collecting`，都用 `Authorization: Bearer <token>`。
-- 消息：编辑器 → 宿主 `ready / title / saving / saved / dirty / conflict / collab / present / error / navigate / request / exported / export-failed / imported / selection / comment-new / comment-open / comment-orphans / comment-moved`；宿主 → 编辑器 `theme / title / insert / export / readonly / command / focus / flush / comments / comment-focus / comment-pending`。
+- 消息：编辑器 → 宿主 `ready / title / saving / saved / dirty / conflict / collab / present / error / navigate / request / exported / export-failed / imported / selection / comment-new / comment-open / comment-orphans / comment-moved`；宿主 → 编辑器 `theme / title / insert / export / readonly / command / focus / flush / remote / comments / comment-focus / comment-pending`。
 - 评论（文档、表格）：`ready` 里带 `comments: true`。编辑器只管选范围、生成锚点（`CommentAnchor`，宿主原样保存的不透明 JSON）、画高亮、报点击和找不到的锚点；评论串、回复、@ 提到、通知都在宿主。加评论不改内容，只读的人也能评论。
 - 文档格式的实时协同连到宿主的 `ws(s)://…/ws/collab/<编号>?token=…`，协议和 y-websocket 相同。
+- 别的格式（表格、多维表格、幻灯片、思维笔记、画板、流程图、问卷）几个人同时开着时，别人保存后几秒内合并进来（2026-11-27，用户：「两人同时在编辑的时候看不到对方编辑的结果」）：宿主知道服务器上有了新版本（平台靠 `docs.update` 推送）就发 `{ type: 'remote', version }`；编辑器装好内容后调 `s.live({ snapshot, apply, busy })`，会话取最新内容，按「上次和服务器一致时的内容 / 自己现在的 / 服务器上的」三方合并（`packages/bridge/src/merge.ts`：对象逐个键合并，带编号的数组按编号对齐，两边改了同一处以自己的为准——自己的之后会保存），再交给 `apply` 换上。保存碰上版本冲突（409）也这样合并后重存，不再提示刷新、丢掉改动。按着鼠标、输入法拼字、编辑器说正忙时先等（最多 15 秒；这期间保存往后推，不卡住；宿主发 `flush` 时不等）。各编辑器怎么换内容见各自的 README。
 
 ## 内容格式
 

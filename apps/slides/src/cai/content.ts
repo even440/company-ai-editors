@@ -3,7 +3,8 @@
  * 空内容（{}）打开时建一页空白封面，用 PPTist 自己的默认主题。
  */
 import { nanoid } from 'nanoid'
-import { useSlidesStore } from '@/store'
+import { useMainStore, useSlidesStore, useSnapshotStore } from '@/store'
+import { db } from '@/utils/database'
 import type { PPTElement, Slide, SlideTheme } from '@/types/slides'
 import { htmlToText } from '@/utils/common'
 
@@ -36,6 +37,28 @@ export function applyContent(content: unknown) {
   if (typeof c.viewportRatio === 'number' && c.viewportRatio > 0) st.setViewportRatio(c.viewportRatio)
   st.updateSlideIndex(0)
   st.setSlides(isSlidesContent(c) ? c.slides : defaultSlides(st.theme))
+}
+
+/**
+ * 别人保存后合并好的内容换进 store（bridge 会话的 live）：和 applyContent 不同，停在原来那一页（按页面编号找，被删了就停在附近），
+ * 选中的元素还在就留着；撤销记录从现在重新记（快照是整份幻灯片，撤销会把别人的改动一起退掉）
+ */
+export function applyRemote(content: unknown) {
+  const st = useSlidesStore(), main = useMainStore()
+  const c = (content && typeof content === 'object' ? content : {}) as Partial<SlidesContent>
+  const curId = st.slides[st.slideIndex]?.id, at = st.slideIndex
+  if (c.theme && typeof c.theme === 'object') st.setTheme(c.theme)
+  if (typeof c.viewportSize === 'number' && c.viewportSize > 0) st.setViewportSize(c.viewportSize)
+  if (typeof c.viewportRatio === 'number' && c.viewportRatio > 0) st.setViewportRatio(c.viewportRatio)
+  const slides = isSlidesContent(c) ? c.slides : defaultSlides(st.theme)
+  st.setSlides(slides)
+  const i = slides.findIndex((x) => x.id === curId)
+  st.updateSlideIndex(i >= 0 ? i : Math.max(0, Math.min(at, slides.length - 1)))
+  const ids = new Set((slides[st.slideIndex]?.elements ?? []).map((e) => e.id))
+  const keep = main.activeElementIdList.filter((id) => ids.has(id))
+  if (keep.length !== main.activeElementIdList.length) main.setActiveElementIdList(keep)
+  // 不等它：会话在 apply 期间不记改动，等 IndexedDB 的这段时间里用户的改动会漏掉
+  void db.snapshots.clear().then(() => useSnapshotStore().initSnapshotDatabase())
 }
 
 /** 当前 store 里的内容：保存时用 */

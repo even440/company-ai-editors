@@ -39,3 +39,7 @@ Excalidraw 默认从公网 CDN 下载字体。`fonts.ts` 让 Vite 把 `node_modu
 ## 界面
 
 中文界面（`langCode="zh-CN"`，语言包按需加载）。主菜单只保留「导出图片」「查找」「清空画布」「帮助」「画布背景」，去掉了打开文件、保存到本地和 excalidraw.com 的入口。
+
+## 别人的改动合并进来（2026-11-27）
+
+几个人同时开着时，别人保存后几秒内合并进来（会话的 `live`，见仓库 README）：元素按 `id` 对齐，内容变了的元素版本号加一（Excalidraw 按版本号认变化），新图片的附件补进去，`updateScene` 用 `CaptureUpdateAction.NEVER`（不进撤销记录）；换完把内容签名对上，免得当成自己的改动。正在画、拖动、改大小、旋转、打字、编辑折线时先等。Excalidraw 第一次回调（初始内容装好）时才接上。

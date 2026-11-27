@@ -6,7 +6,7 @@ import { openSession, type Session } from '@cai/bridge'
 import { useSlidesStore, useSnapshotStore } from '@/store'
 import { deleteDiscardedDB } from '@/utils/database'
 import useImport from '@/hooks/useImport'
-import { applyContent, currentContent, plainOf } from './content'
+import { applyContent, applyRemote, currentContent, plainOf } from './content'
 import { handleHost, untilDone } from './host'
 import { caiError, caiReadonly, caiSession } from './session'
 
@@ -61,6 +61,12 @@ export async function bootCai() {
   watch(() => [st.slides, st.theme, st.viewportSize, st.viewportRatio], () => markDirty(s), { deep: true })
   watch(() => st.title, (t) => void syncTitle(s, t))
   s.onHost((m) => handleHost(s, m))
+  // 别人保存了：合并进来换上（bridge 会话的 live）。拖着东西时会话自己会等；正在打字的文字框不用等——
+  // PPTist 的文字框有焦点时不会被 store 里的内容盖掉（ProsemirrorEditor 的 watch），打的字 300 毫秒后写回 store，合并时以自己的为准
+  s.live({
+    snapshot: () => ({ content: currentContent(), plain: plainOf(st.slides) }),
+    apply: async (content) => { applyRemote(content); await nextTick() }, // 等 nextTick：store 变化引起的 markDirty 在会话的 apply 期间跑完
+  })
 
   if (imported) {
     markDirty(s)

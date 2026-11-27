@@ -113,6 +113,24 @@ export function FlowEditor({ session: s }: { session: Session }) {
     graph.bindKey(['ctrl+z', 'meta+z'], () => { if (!roRef.current) graph.undo(); return false; });
     graph.bindKey(['ctrl+y', 'ctrl+shift+z', 'meta+shift+z'], () => { if (!roRef.current) graph.redo(); return false; });
 
+    // 别人保存了：合并进来换上（会话的 live）。整份换（fromJSON），画布位置、缩放不动，选中的按编号选回来（属性面板跟着换成新的格子）；
+    // 换的这一步不进撤销记录，它引起的改动事件不提交（会话自己判断要不要接着存）。正在改文字（格子上的编辑框、属性面板的输入框）时先等一等
+    s.live({
+      snapshot,
+      apply: (content) => {
+        const c = content as Partial<FlowContent> | null;
+        const keep = graph.getSelectedCells().map((x) => x.id);
+        graph.disableHistory();
+        try { graph.fromJSON({ cells: (c && Array.isArray(c.cells) ? c.cells : []).map(({ tools: _tools, ...x }) => x) }); }
+        finally { graph.enableHistory(); }
+        if (!roRef.current) setEditable(graph, true);
+        graph.resetSelection(keep.map((id) => graph.getCellById(id)).filter(Boolean) as Cell[]);
+        if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+        bump((v) => v + 1);
+      },
+      busy: () => { const a = document.activeElement as HTMLElement | null; return !!a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'); },
+    });
+
     return () => { if (timer.current) clearTimeout(timer.current); stencil.dispose(); graph.dispose(); graphRef.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
