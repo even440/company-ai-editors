@@ -89,8 +89,8 @@ function mergeArr(base: unknown[], mine: unknown[], theirs: unknown[]): unknown[
   if (!mine.length && !theirs.length) return mine;
   const B = index(base), Mi = index(mine), T = index(theirs);
   if (!B || !Mi || !T || (!Mi.size && !T.size)) return null;
-  const mineMoved = reordered(base, mine, B, Mi);
-  const primary = mineMoved || !reordered(base, theirs, B, T) ? (mineMoved ? mine : theirs) : theirs;
+  // 顺序以挪动过的一边为准：自己挪过就用自己的，不然用对方的（对方挪没挪都一样）
+  const primary = reordered(base, mine, B, Mi) ? mine : theirs;
   const secondary = primary === mine ? theirs : mine;
   const order = primary.map((x) => keyOf(x)!);
   const placed = new Set(order);

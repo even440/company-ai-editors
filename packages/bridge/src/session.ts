@@ -45,6 +45,10 @@ export interface Live {
 const BUSY_RETRY = 400, BUSY_MAX = 15_000;
 /** 按下鼠标超过这么久还没松开（松开在框外面没收到）就不算按着了 */
 const POINTER_STALE = 10_000;
+/** 取最新内容失败（网络）隔多久再试；编辑器换内容出错隔多久再试、连续几次就退回提示刷新 */
+const FETCH_RETRY = 10_000, APPLY_RETRY = 5000, APPLY_GIVE_UP = 3;
+/** 编辑器换内容时出的错（和取内容的网络错误分开算） */
+class ApplyError extends Error {}
 export type Theme = 'light' | 'dark';
 
 const param = (k: string) => new URLSearchParams(location.search).get(k) ?? '';
@@ -82,6 +86,8 @@ export class Session {
   private applying = false;
   private pointerAt = 0;
   private composing = false;
+  private applyFails = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
   present: PresenceUser[] = [];
   onPresent: ((users: PresenceUser[]) => void) | null = null;
 
@@ -154,12 +160,23 @@ export class Session {
   /** 取服务器上的最新内容合并进来；同一时间只跑一个，跑的时候又来了新版本就再跑一遍 */
   private pull(conflict?: SaveConflict): Promise<void> {
     if (this.pulling) { this.pullAgain = true; return this.pulling; }
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
     this.pulling = (async () => {
       try {
         let c = conflict;
         do { this.pullAgain = false; await this.pullOnce(c); c = undefined; } while (this.pullAgain);
+        this.applyFails = 0;
       } catch (e) {
+        // 换内容出错：过一会儿再试，连续几次都不行就退回原来的做法（提示后刷新，刷新后是服务器上的最新内容）；
+        // 取内容失败（多半是网络）：过一会儿再试，不刷新。版本号没变，再试时会重新取
+        const applyErr = e instanceof ApplyError;
+        if (applyErr && ++this.applyFails >= APPLY_GIVE_UP) {
+          alert(this.dirty ? '这份内容在别处被改过了，没能合并进来，页面会重新加载到最新版本；你刚才的改动没有保存。' : '这份内容在别处被改过了，页面会重新加载到最新版本。');
+          location.reload();
+          return;
+        }
         this.send({ type: 'error', message: e instanceof Error ? e.message : '取最新内容失败' });
+        this.retryTimer = setTimeout(() => { this.retryTimer = null; void this.pull(); }, applyErr ? APPLY_RETRY : FETCH_RETRY);
       } finally { this.pulling = null; }
     })();
     return this.pulling;
@@ -184,7 +201,9 @@ export class Session {
     const local = this.synced !== undefined && !same(mine, this.synced);
     const next = local ? merge3(this.synced, mine, theirs) : theirs;
     this.applying = true;
-    try { await h.apply(jsonClone(next)); } finally { this.applying = false; }
+    try { await h.apply(jsonClone(next)); }
+    catch (e) { throw new ApplyError(`合并别人的改动失败：${e instanceof Error ? e.message : String(e)}`); }
+    finally { this.applying = false; }
     this.version = latest.version;
     if (this.doc) { this.doc.version = latest.version; this.doc.content = theirs; }
     if (local && !same(next, theirs)) {

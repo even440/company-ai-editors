@@ -143,6 +143,9 @@ export function SheetEditor({ session: s }: { session: Session }) {
         if (sel) sh.getRange(sel[0], sel[1], sel[2], sel[3]).activate();
         if (scroll) sh.scrollToCell(scroll.sheetViewStartRow, scroll.sheetViewStartColumn);
       } catch { /* 原来的位置在新内容里没有了：停在开头 */ }
+      // 新建的工作簿权限点默认都是「允许」（只读的人重建后能打字了：发布窗口 company-ai-96 审查时提的，本机复现过）。
+      // 只读时马上设回去，Univer 自己的初始化跑完（和 settling 一样 0.8 秒）再设一次
+      if (s.readonly) { applyPermission(); setTimeout(() => { if (!disposed && s.readonly) applyPermission(); }, 800); }
     };
     /** 别人保存了：合并好的内容换进来（bridge 会话的 live；只改格子还是整个重建见 live.ts）。格子里正在打字时先等一等 */
     const live: Live = {
